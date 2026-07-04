@@ -15,9 +15,19 @@ export default function PoolPage() {
   const { seedReserve, isSeeding } = useOwnerSeedReserve();
   const [seedText, setSeedText] = useState("1");
 
-  const isOwner =
-    address && params?.owner &&
-    address.toLowerCase() === params.owner.toLowerCase();
+  // Both sides normalised to the raw 40-hex body so we don't get fooled by
+  // checksum casing, extra whitespace, or a placeholder string like
+  // "0x10Db...CCD7" accidentally passed at deploy time (which will simply
+  // fail to match a real wallet — as it should).
+  const normalizeAddress = (s: string | null | undefined): string | null => {
+    if (!s) return null;
+    const m = String(s).toLowerCase().replace(/^0x/, "").match(/^[0-9a-f]{40}$/);
+    return m ? m[0] : null;
+  };
+  const ownerNorm  = normalizeAddress(params?.owner);
+  const walletNorm = normalizeAddress(address);
+  const ownerLooksValid = !!ownerNorm;
+  const isOwner = !!ownerNorm && ownerNorm === walletNorm;
 
   const submit = () => {
     let wei: bigint;
@@ -62,22 +72,28 @@ export default function PoolPage() {
             <dl className="grid grid-cols-2 gap-y-2 text-sm">
               <dt className="text-ivory-soft/50">Owner</dt>
               <dd>
-                {params.owner ? (
-                  <AddressDisplay address={params.owner} showCopy />
-                ) : (
+                {!params.owner ? (
                   <span className="mono text-xs text-red-400/80">
                     unset — contract has no owner. Redeploy required to enable owner actions.
                   </span>
-                )}
-                {address && params.owner && (
-                  <span
-                    className="ml-2 text-[10px] font-medium uppercase tracking-wider"
-                    style={{
-                      color: isOwner ? "var(--gold-bright)" : "var(--ivory-soft-50)",
-                    }}
-                  >
-                    · {isOwner ? "You" : "Not you"}
+                ) : !ownerLooksValid ? (
+                  <span className="mono text-xs text-red-400/80" title={params.owner}>
+                    invalid — stored as “{params.owner}”. Redeploy passing the full 42-char address (no ellipsis).
                   </span>
+                ) : (
+                  <>
+                    <AddressDisplay address={params.owner} showCopy />
+                    {address && (
+                      <span
+                        className="ml-2 text-[10px] font-medium uppercase tracking-wider"
+                        style={{
+                          color: isOwner ? "var(--gold-bright)" : "var(--ivory-soft-50)",
+                        }}
+                      >
+                        · {isOwner ? "You" : "Not you"}
+                      </span>
+                    )}
+                  </>
                 )}
               </dd>
               <dt className="text-ivory-soft/50">Coverage minimum</dt>

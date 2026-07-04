@@ -18,9 +18,16 @@ export default function NewPolicyPage() {
   const { data: params } = useProtocolParams();
   const { buyPolicy, isBuying } = useBuyPolicy();
 
+  // Normalise both sides to the raw 40-hex body so checksum casing or a
+  // literal placeholder string doesn't mismatch a real wallet.
+  const normalizeAddress = (s: string | null | undefined): string | null => {
+    if (!s) return null;
+    const m = String(s).toLowerCase().replace(/^0x/, "").match(/^[0-9a-f]{40}$/);
+    return m ? m[0] : null;
+  };
   const isOwner = !!(
-    address && params?.owner &&
-    address.toLowerCase() === params.owner.toLowerCase()
+    normalizeAddress(address) &&
+    normalizeAddress(address) === normalizeAddress(params?.owner)
   );
 
   const [chain, setChain] = useState("ethereum");
