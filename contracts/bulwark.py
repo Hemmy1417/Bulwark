@@ -78,14 +78,16 @@ class Bulwark(gl.Contract):
 
     def _only_owner(self) -> None:
         # sender_account is Address; self.owner is Address — direct comparison.
-        if gl.message.sender_account != self.owner:
+        if gl.message.sender_address != self.owner:
             raise gl.vm.UserError("Only the contract owner may call this")
 
     def _now(self) -> int:
-        # Studionet has no wall-clock. Use block number so ordering is stable
-        # and durations are measurable in a testable way. Frontend can
-        # convert block deltas to approximate days.
-        return int(gl.message.block_number)
+        # Studionet's GenVM has no clock and no block_number attribute. Use a
+        # monotonic combined counter — every write already increments one of
+        # the two, so the returned value is strictly non-decreasing across
+        # calls. Frontends convert deltas to approximate elapsed time by
+        # tracking browser-side first-seen timestamps per policy_id.
+        return int(self.policy_counter) + int(self.claim_counter)
 
     def _quote_premium_wei(self, coverage_wei: int, duration_days: int) -> int:
         if duration_days not in DURATION_RATES_BPS:
@@ -227,7 +229,7 @@ class Bulwark(gl.Contract):
         Create a new insurance policy on a specific validator. msg.value must
         equal the quoted premium exactly — no over/under payment.
         """
-        buyer = str(gl.message.sender_account)
+        buyer = str(gl.message.sender_address)
         coverage = int(coverage_wei)
         duration = int(duration_days)
 
@@ -300,7 +302,7 @@ class Bulwark(gl.Contract):
         via prompt_comparative (byte-exact strict_eq is unreliable on LLM
         prose), and if the cause is covered the payout fires immediately.
         """
-        claimant = str(gl.message.sender_account)
+        claimant = str(gl.message.sender_address)
         policy = self._load_policy(policy_id)
 
         if policy["policyholder"] != claimant:
