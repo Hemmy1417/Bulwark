@@ -1,0 +1,172 @@
+@import "tailwindcss";
+
+/* ── Lloyd's-of-London editorial palette ────────────────────────────────── */
+:root {
+  --navy:         #0B1F3A;
+  --navy-deep:    #071328;
+  --navy-mid:     #14314E;
+  --gold:         #C9A961;
+  --gold-bright:  #E6C77A;
+  --gold-soft:    #8F7A45;
+  --ivory:        #F3EEDF;
+  --ivory-soft:   #E5DFCB;
+  --muted:        #8FA3BE;
+  --hairline:     rgba(201, 169, 97, 0.18);
+  --hairline-soft: rgba(201, 169, 97, 0.10);
+  --success:      #6AB187;
+  --danger:       #C36A6A;
+
+  --background:   var(--navy);
+  --foreground:   var(--ivory);
+}
+
+@theme inline {
+  --color-navy:         var(--navy);
+  --color-navy-deep:    var(--navy-deep);
+  --color-navy-mid:     var(--navy-mid);
+  --color-gold:         var(--gold);
+  --color-gold-bright:  var(--gold-bright);
+  --color-gold-soft:    var(--gold-soft);
+  --color-ivory:        var(--ivory);
+  --color-ivory-soft:   var(--ivory-soft);
+  --color-muted:        var(--muted);
+  --color-hairline:     var(--hairline);
+  --color-success:      var(--success);
+  --color-danger:       var(--danger);
+  --color-background:   var(--navy);
+  --color-foreground:   var(--ivory);
+}
+
+@layer base {
+  * { border-color: var(--hairline); }
+  html, body { background: var(--navy); color: var(--ivory); }
+  body {
+    font-family: var(--font-inter), -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    font-feature-settings: "ss01" 1, "cv11" 1;
+  }
+  h1, h2, h3, h4, h5, h6,
+  .display {
+    font-family: var(--font-garamond), "EB Garamond", ui-serif, Georgia, serif;
+    font-weight: 500;
+    letter-spacing: -0.01em;
+  }
+  .mono {
+    font-family: var(--font-mono), ui-monospace, "SF Mono", Menlo, monospace;
+    letter-spacing: 0.02em;
+  }
+  .eyebrow {
+    text-transform: uppercase;
+    letter-spacing: 0.24em;
+    font-size: 0.7rem;
+    color: var(--gold);
+    font-weight: 600;
+  }
+}
+
+@layer utilities {
+  .card {
+    background: linear-gradient(180deg,
+      rgba(20, 49, 78, 0.6) 0%,
+      rgba(11, 31, 58, 0.75) 100%);
+    border: 1px solid var(--hairline);
+    border-radius: 4px;
+    box-shadow:
+      inset 0 1px 0 rgba(230, 199, 122, 0.06),
+      0 1px 0 rgba(0, 0, 0, 0.35);
+  }
+  .card-strong {
+    background: rgba(20, 49, 78, 0.75);
+    border: 1px solid rgba(201, 169, 97, 0.3);
+    border-radius: 4px;
+  }
+
+  .btn {
+    display: inline-flex; align-items: center; justify-content: center;
+    gap: 0.5rem;
+    padding: 0.55rem 1.1rem;
+    font-family: var(--font-inter), sans-serif;
+    font-size: 0.875rem;
+    font-weight: 500;
+    letter-spacing: 0.01em;
+    border-radius: 2px;
+    transition: all 0.15s ease;
+    cursor: pointer;
+    border: 1px solid transparent;
+  }
+  .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  .btn-gold {
+    background: var(--gold);
+    color: var(--navy-deep);
+    border-color: var(--gold);
+  }
+  .btn-gold:hover:not(:disabled) {
+    background: var(--gold-bright);
+    border-color: var(--gold-bright);
+  }
+
+  .btn-ghost {
+    background: transparent;
+    color: var(--ivory);
+    border-color: var(--hairline);
+  }
+  .btn-ghost:hover:not(:disabled) {
+    border-color: var(--gold);
+    color: var(--gold-bright);
+  }
+
+  .btn-danger {
+    background: transparent;
+    color: var(--danger);
+    border-color: rgba(195, 106, 106, 0.4);
+  }
+  .btn-danger:hover:not(:disabled) {
+    background: rgba(195, 106, 106, 0.1);
+    border-color: var(--danger);
+  }
+
+  .input {
+    width: 100%;
+    padding: 0.6rem 0.85rem;
+    background: rgba(7, 19, 40, 0.55);
+    border: 1px solid var(--hairline);
+    border-radius: 2px;
+    color: var(--ivory);
+    font-family: inherit;
+    font-size: 0.9rem;
+    transition: border-color 0.15s ease;
+  }
+  .input:focus {
+    outline: none;
+    border-color: var(--gold);
+  }
+  .input::placeholder { color: rgba(143, 163, 190, 0.5); }
+
+  .chip {
+    display: inline-flex; align-items: center; gap: 0.35rem;
+    padding: 0.2rem 0.55rem;
+    border-radius: 2px;
+    font-size: 0.7rem;
+    font-weight: 600;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    border: 1px solid;
+  }
+  .chip-active   { color: var(--gold-bright);  border-color: rgba(230, 199, 122, 0.35); background: rgba(230, 199, 122, 0.06); }
+  .chip-claimed  { color: var(--success);       border-color: rgba(106, 177, 135, 0.35); background: rgba(106, 177, 135, 0.06); }
+  .chip-expired  { color: var(--muted);         border-color: rgba(143, 163, 190, 0.3);  background: rgba(143, 163, 190, 0.05); }
+  .chip-rejected { color: var(--danger);        border-color: rgba(195, 106, 106, 0.35); background: rgba(195, 106, 106, 0.06); }
+  .chip-paid     { color: var(--success);       border-color: rgba(106, 177, 135, 0.35); background: rgba(106, 177, 135, 0.06); }
+  .chip-pending  { color: var(--gold-bright);  border-color: rgba(230, 199, 122, 0.35); background: rgba(230, 199, 122, 0.06); }
+
+  .hairline {
+    height: 1px;
+    background: linear-gradient(to right, transparent, var(--hairline), transparent);
+  }
+
+  .animate-fade-in { animation: fadeIn 0.5s ease-out forwards; }
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(6px); }
+    to   { opacity: 1; transform: translateY(0);   }
+  }
+}

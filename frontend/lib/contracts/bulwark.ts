@@ -1,0 +1,239 @@
+import { createClient } from "genlayer-js";
+import { studionet } from "genlayer-js/chains";
+import type {
+  Policy,
+  Claim,
+  ProtocolParams,
+  PremiumQuote,
+  TransactionReceipt,
+} from "./types";
+
+/**
+ * Typed wrapper around the Bulwark Intelligent Contract.
+ * Read methods return safe defaults on read failure so a fresh deployment
+ * with no policies yet doesn't crash the UI. Write methods reject on
+ * UNDETERMINED consensus (default waitForTransactionReceipt returns even
+ * then, which quietly leaves the UI in a stale state).
+ */
+class Bulwark {
+  private contractAddress: `0x${string}`;
+  private client: ReturnType<typeof createClient>;
+
+  constructor(contractAddress: string, address?: string | null) {
+    this.contractAddress = contractAddress as `0x${string}`;
+    const config: any = { chain: studionet };
+    if (address) config.account = address as `0x${string}`;
+    this.client = createClient(config);
+  }
+
+  private toObj(raw: any): Record<string, any> {
+    if (!raw) return {};
+    if (raw instanceof Map) return Object.fromEntries(raw.entries());
+    if (typeof raw === "object") return raw;
+    return {};
+  }
+
+  private async safeRead(functionName: string, args: any[] = []): Promise<any> {
+    try {
+      return await this.client.readContract({
+        address: this.contractAddress,
+        functionName,
+        args,
+      });
+    } catch (err) {
+      console.warn(`[Bulwark] safeRead "${functionName}" failed:`, err);
+      return null;
+    }
+  }
+
+  private async waitAndVerify(txHash: `0x${string}`): Promise<TransactionReceipt> {
+    const receipt = (await this.client.waitForTransactionReceipt({
+      hash: txHash as any,
+      status: "ACCEPTED" as any,
+      retries: 80,
+      interval: 5000,
+    })) as any;
+    const status = String(receipt?.status ?? "").toUpperCase();
+    const cd = receipt?.consensus_data ?? {};
+    const lr = cd.leader_receipt;
+    const r = Array.isArray(lr) ? lr[0] : lr;
+    if (status.includes("UNDETERMINED") || status.includes("CANCELED")) {
+      throw new Error("Validators could not reach consensus — try again");
+    }
+    if (r?.execution_result === "ERROR") {
+      const stderr: string = r?.genvm_result?.stderr ?? "";
+      const userErr = stderr.match(/UserError: (.+)/)?.[1];
+      if (userErr) throw new Error(userErr);
+      const lines = stderr.trim().split("\n").filter((l) => l.trim() && !l.startsWith("  "));
+      const last = lines[lines.length - 1] || "";
+      const specific = last.replace(/^.*?Error: /, "").slice(0, 240);
+      console.error("[Bulwark] contract execution error:", stderr);
+      throw new Error(specific || "Contract execution error — check the console for the traceback");
+    }
+    return receipt as TransactionReceipt;
+  }
+
+  parseReturnPayload(receipt: any): any | null {
+    const lr = receipt?.consensus_data?.leader_receipt;
+    const r = Array.isArray(lr) ? lr[0] : lr;
+    const raw = r?.result?.payload?.readable ?? r?.result?.readable ?? null;
+    if (typeof raw !== "string") return null;
+    try { return JSON.parse(JSON.parse(raw)); } catch { return null; }
+  }
+
+  private normalisePolicy(obj: Record<string, any>): Policy {
+    return {
+      ...obj,
+      policy_id:        String(obj.policy_id ?? ""),
+      duration_days:    Number(obj.duration_days ?? 0),
+      created_at_block: Number(obj.created_at_block ?? 0),
+      expires_at_block: Number(obj.expires_at_block ?? 0),
+      coverage_wei:     String(obj.coverage_wei ?? "0"),
+      premium_wei:      String(obj.premium_wei ?? "0"),
+      claim_id:         obj.claim_id == null ? null : String(obj.claim_id),
+    } as Policy;
+  }
+
+  private normaliseClaim(obj: Record<string, any>): Claim {
+    return {
+      ...obj,
+      claim_id:        String(obj.claim_id ?? ""),
+      policy_id:       String(obj.policy_id ?? ""),
+      ai_confidence:   Number(obj.ai_confidence ?? 0),
+      filed_at_block:  Number(obj.filed_at_block ?? 0),
+      payout_wei:      String(obj.payout_wei ?? "0"),
+      evidence_urls:   Array.isArray(obj.evidence_urls) ? obj.evidence_urls : [],
+    } as Claim;
+  }
+
+  // ── READ ────────────────────────────────────────────────────────────────
+
+  async getProtocolParams(): Promise<ProtocolParams | null> {
+    const raw = await this.safeRead("get_protocol_params");
+    if (!raw) return null;
+    const p = this.toObj(raw);
+    return {
+      ...p,
+      active_policy_count: Number(p.active_policy_count ?? 0),
+      total_policies:      Number(p.total_policies ?? 0),
+      total_claims:        Number(p.total_claims ?? 0),
+      duration_rates_bps:  this.toObj(p.duration_rates_bps ?? {}) as Record<string, number>,
+    } as ProtocolParams;
+  }
+
+  async previewPremium(coverageWei: bigint, durationDays: number): Promise<PremiumQuote | null> {
+    const raw = await this.safeRead("preview_premium", [coverageWei, durationDays]);
+    if (!raw) return null;
+    const q = this.toObj(raw);
+    return {
+      coverage_wei:  String(q.coverage_wei ?? "0"),
+      duration_days: Number(q.duration_days ?? durationDays),
+      rate_bps:      Number(q.rate_bps ?? 0),
+      premium_wei:   String(q.premium_wei ?? "0"),
+    };
+  }
+
+  async getPolicy(policyId: string): Promise<Policy | null> {
+    const raw = await this.safeRead("get_policy", [policyId]);
+    if (!raw) return null;
+    return this.normalisePolicy(this.toObj(raw));
+  }
+
+  async getClaim(claimId: string): Promise<Claim | null> {
+    const raw = await this.safeRead("get_claim", [claimId]);
+    if (!raw) return null;
+    return this.normaliseClaim(this.toObj(raw));
+  }
+
+  async getPoliciesByOwner(owner: string): Promise<Policy[]> {
+    const raw = await this.safeRead("get_policies_by_owner", [owner]);
+    if (!Array.isArray(raw)) return [];
+    return raw.map((r) => this.normalisePolicy(this.toObj(r)));
+  }
+
+  async getClaimsByOwner(owner: string): Promise<Claim[]> {
+    const raw = await this.safeRead("get_claims_by_owner", [owner]);
+    if (!Array.isArray(raw)) return [];
+    return raw.map((r) => this.normaliseClaim(this.toObj(r)));
+  }
+
+  async getClaimLedger(limit = 50): Promise<Claim[]> {
+    const raw = await this.safeRead("get_claim_ledger", [limit]);
+    if (!Array.isArray(raw)) return [];
+    return raw.map((r) => this.normaliseClaim(this.toObj(r)));
+  }
+
+  // ── WRITE ───────────────────────────────────────────────────────────────
+
+  async buyPolicy(args: {
+    validatorIdentifier: string;
+    chainLabel: string;
+    coverageWei: bigint;
+    durationDays: number;
+    premiumWei: bigint;
+  }): Promise<TransactionReceipt> {
+    try {
+      const txHash = await this.client.writeContract({
+        address: this.contractAddress,
+        functionName: "buy_policy",
+        args: [args.validatorIdentifier, args.chainLabel, args.coverageWei, args.durationDays],
+        value: args.premiumWei,
+      });
+      return await this.waitAndVerify(txHash);
+    } catch (err) {
+      console.error("[Bulwark] buyPolicy failed:", err);
+      throw err instanceof Error ? err : new Error("Failed to buy policy");
+    }
+  }
+
+  async fileClaim(args: {
+    policyId: string;
+    primaryEvidenceUrl: string;
+    causeEvidenceUrls: string[];
+  }): Promise<TransactionReceipt> {
+    try {
+      const txHash = await this.client.writeContract({
+        address: this.contractAddress,
+        functionName: "file_claim",
+        args: [args.policyId, args.primaryEvidenceUrl, args.causeEvidenceUrls],
+        value: BigInt(0),
+      });
+      return await this.waitAndVerify(txHash);
+    } catch (err) {
+      console.error("[Bulwark] fileClaim failed:", err);
+      throw err instanceof Error ? err : new Error("Failed to file claim");
+    }
+  }
+
+  async ownerSeedReserve(amountWei: bigint): Promise<TransactionReceipt> {
+    try {
+      const txHash = await this.client.writeContract({
+        address: this.contractAddress,
+        functionName: "owner_seed_reserve",
+        args: [],
+        value: amountWei,
+      });
+      return await this.waitAndVerify(txHash);
+    } catch (err) {
+      console.error("[Bulwark] ownerSeedReserve failed:", err);
+      throw err instanceof Error ? err : new Error("Failed to seed reserve");
+    }
+  }
+
+  async settlePendingPayout(claimId: string): Promise<TransactionReceipt> {
+    try {
+      const txHash = await this.client.writeContract({
+        address: this.contractAddress,
+        functionName: "settle_pending_payout",
+        args: [claimId],
+        value: BigInt(0),
+      });
+      return await this.waitAndVerify(txHash);
+    } catch (err) {
+      console.error("[Bulwark] settlePendingPayout failed:", err);
+      throw err instanceof Error ? err : new Error("Failed to settle payout");
+    }
+  }
+}
+
+export default Bulwark;
