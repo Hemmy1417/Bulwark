@@ -51,14 +51,17 @@ class Bulwark(gl.Contract):
     policy_counter: u256
     claim_counter:  u256
 
-    owner:              str
+    # Store owner as GenLayer's native Address type — the CLI auto-parses any
+    # 40-hex-char string as `Address`, so accepting `str` here collides with the
+    # storage encoder (which calls .encode() on strings, absent on Address).
+    owner:              Address
     reserve_wei:        u256   # payout capacity — funded by premiums + owner seeds
     total_premiums_wei: u256   # lifetime total
     total_payouts_wei:  u256   # lifetime total
     active_policy_count: u256
 
     # ── constructor ─────────────────────────────────────────────────────────
-    def __init__(self, owner: str):
+    def __init__(self, owner: Address):
         self.policies          = TreeMap()
         self.claims            = TreeMap()
         self.policies_by_owner = TreeMap()
@@ -74,6 +77,7 @@ class Bulwark(gl.Contract):
     # ── internal helpers ────────────────────────────────────────────────────
 
     def _only_owner(self) -> None:
+        # sender_account is Address; self.owner is Address — direct comparison.
         if gl.message.sender_account != self.owner:
             raise gl.vm.UserError("Only the contract owner may call this")
 
@@ -126,7 +130,9 @@ class Bulwark(gl.Contract):
     @gl.public.view
     def get_protocol_params(self) -> dict:
         return {
-            "owner":               self.owner,
+            # Address serialises poorly through the readable payload — hand back a
+            # plain '0x...' hex string so the frontend does not have to unpack it.
+            "owner":               str(self.owner),
             "min_coverage_wei":    str(MIN_COVERAGE_WEI),
             "max_coverage_wei":    str(MAX_COVERAGE_WEI),
             "reserve_wei":         str(int(self.reserve_wei)),
