@@ -112,12 +112,20 @@ class Bulwark {
     const raw = await this.safeRead("get_protocol_params");
     if (!raw) return null;
     const p = this.toObj(raw);
+    // duration_rates_bps arrives as a map with BigInt values (u256). Coerce
+    // each entry to Number here so any downstream arithmetic (e.g. bps / 100)
+    // doesn't hit "Cannot mix BigInt and other types".
+    const ratesRaw = this.toObj(p.duration_rates_bps ?? {});
+    const rates: Record<string, number> = {};
+    for (const [k, v] of Object.entries(ratesRaw)) {
+      rates[String(k)] = Number(v ?? 0);
+    }
     return {
       ...p,
       active_policy_count: Number(p.active_policy_count ?? 0),
       total_policies:      Number(p.total_policies ?? 0),
       total_claims:        Number(p.total_claims ?? 0),
-      duration_rates_bps:  this.toObj(p.duration_rates_bps ?? {}) as Record<string, number>,
+      duration_rates_bps:  rates,
     } as ProtocolParams;
   }
 
