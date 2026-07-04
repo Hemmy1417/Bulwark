@@ -1,21 +1,27 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Loader2, ShieldCheck, Info } from "lucide-react";
+import { Loader2, ShieldCheck, Info, ArrowRight } from "lucide-react";
 import { useProtocolParams, usePreviewPremium, useBuyPolicy } from "@/lib/hooks/useBulwark";
 import { useWallet } from "@/lib/genlayer/wallet";
 import { parseGen, formatGen } from "@/lib/utils";
 import { error as toastError } from "@/lib/toast";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { HowTo } from "@/components/HowTo";
 
 const DURATIONS = [7, 30, 90] as const;
 
 export default function NewPolicyPage() {
   const router = useRouter();
-  const { isConnected } = useWallet();
+  const { isConnected, address } = useWallet();
   const { data: params } = useProtocolParams();
   const { buyPolicy, isBuying } = useBuyPolicy();
+
+  const isOwner = !!(
+    address && params?.owner &&
+    address.toLowerCase() === params.owner.toLowerCase()
+  );
 
   const [chain, setChain] = useState("ethereum");
   const [validator, setValidator] = useState("");
@@ -157,14 +163,24 @@ export default function NewPolicyPage() {
 
         {reserveShort && coverageWei > BigInt(0) && (
           <div
-            className="p-3 rounded-sm flex items-start gap-2 text-sm"
+            className="p-3 rounded-sm flex items-start gap-3 text-sm"
             style={{ background: "rgba(195, 106, 106, 0.08)", border: "1px solid rgba(195, 106, 106, 0.3)" }}
           >
             <Info className="w-4 h-4 mt-0.5 shrink-0" style={{ color: "var(--danger)" }} />
-            <div>
-              Protocol reserve is <span className="mono">{formatGen(reserveWei)} GEN</span> —
-              short of your requested <span className="mono">{formatGen(coverageWei)} GEN</span> coverage.
-              Reduce coverage or ask the owner to top up the reserve.
+            <div className="flex-1 min-w-0 space-y-2">
+              <p>
+                Protocol reserve is <span className="mono">{formatGen(reserveWei)} GEN</span> —
+                short of your requested <span className="mono">{formatGen(coverageWei)} GEN</span> coverage.
+                {isOwner
+                  ? " You're the protocol owner — top up the reserve to unlock this policy."
+                  : " Reduce the coverage or ask the owner to top up the reserve."}
+              </p>
+              {isOwner && (
+                <Link href="/pool" className="btn btn-ghost inline-flex text-xs">
+                  Seed the reserve
+                  <ArrowRight className="w-3 h-3" />
+                </Link>
+              )}
             </div>
           </div>
         )}

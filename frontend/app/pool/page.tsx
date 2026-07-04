@@ -61,7 +61,25 @@ export default function PoolPage() {
             <div className="eyebrow">Protocol parameters</div>
             <dl className="grid grid-cols-2 gap-y-2 text-sm">
               <dt className="text-ivory-soft/50">Owner</dt>
-              <dd><AddressDisplay address={params.owner} showCopy /></dd>
+              <dd>
+                {params.owner ? (
+                  <AddressDisplay address={params.owner} showCopy />
+                ) : (
+                  <span className="mono text-xs text-red-400/80">
+                    unset — contract has no owner. Redeploy required to enable owner actions.
+                  </span>
+                )}
+                {address && params.owner && (
+                  <span
+                    className="ml-2 text-[10px] font-medium uppercase tracking-wider"
+                    style={{
+                      color: isOwner ? "var(--gold-bright)" : "var(--ivory-soft-50)",
+                    }}
+                  >
+                    · {isOwner ? "You" : "Not you"}
+                  </span>
+                )}
+              </dd>
               <dt className="text-ivory-soft/50">Coverage minimum</dt>
               <dd className="mono">{formatGen(params.min_coverage_wei)} GEN</dd>
               <dt className="text-ivory-soft/50">Coverage maximum</dt>
