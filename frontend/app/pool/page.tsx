@@ -7,6 +7,7 @@ import { useWallet } from "@/lib/genlayer/wallet";
 import { parseGen, formatGen } from "@/lib/utils";
 import { AddressDisplay } from "@/components/AddressDisplay";
 import { error as toastError } from "@/lib/toast";
+import { HowTo } from "@/components/HowTo";
 
 export default function PoolPage() {
   const { address } = useWallet();
@@ -31,6 +32,17 @@ export default function PoolPage() {
         <div className="eyebrow mb-1">Reserve room</div>
         <h1 className="display text-4xl">Pool</h1>
       </div>
+
+      <HowTo
+        id="pool"
+        title="How the reserve underwrites payouts"
+        items={[
+          { label: "Reserve",   body: "Total GEN the contract can pay out. Grows from every premium collected plus any owner top-ups. Cannot be withdrawn — additive only." },
+          { label: "Solvency guard", body: "A new policy only binds if reserve ≥ its coverage, so an early buyer is never sold cover the pool cannot honour." },
+          { label: "Rates",     body: "Premium rate scales with duration: 7d = 1.0%, 30d = 5.0%, 90d = 12% of coverage. Fixed on-chain in the MVP." },
+          { label: "Owner top-up", body: "The deploying wallet sees a Seed the reserve panel below. Deposits stack additively — cannot touch premiums already collected." },
+        ]}
+      />
 
       {isLoading || !params ? (
         <div className="card p-10 flex items-center justify-center">

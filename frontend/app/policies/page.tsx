@@ -6,6 +6,7 @@ import { useMyPolicies } from "@/lib/hooks/useBulwark";
 import { useWallet } from "@/lib/genlayer/wallet";
 import { formatGen } from "@/lib/utils";
 import type { Policy } from "@/lib/contracts/types";
+import { HowTo } from "@/components/HowTo";
 
 export default function MyPoliciesPage() {
   const { isConnected } = useWallet();
@@ -23,6 +24,17 @@ export default function MyPoliciesPage() {
           Bind new policy
         </Link>
       </div>
+
+      <HowTo
+        id="my-policies"
+        title="Reading your policies"
+        items={[
+          { label: "ACTIVE",   body: "Coverage is live. Slash within the duration window and you can file a claim from here." },
+          { label: "CLAIMED",  body: "A covered slashing was ruled and the payout has hit — or is queued in PENDING_PAYOUT." },
+          { label: "REJECTED", body: "A claim was filed but the AI panel ruled the cause outside coverage (typically NEGLIGENCE or NOT_SLASHED)." },
+          { label: "EXPIRED",  body: "The duration window closed without a claim. You keep any peace of mind, the pool keeps the premium." },
+        ]}
+      />
 
       {!isConnected ? (
         <EmptyCard title="Connect a wallet" body="Your bound policies show up here." />

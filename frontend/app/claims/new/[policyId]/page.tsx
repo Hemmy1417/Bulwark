@@ -8,6 +8,7 @@ import { usePolicy, useFileClaim } from "@/lib/hooks/useBulwark";
 import { useWallet } from "@/lib/genlayer/wallet";
 import { formatGen } from "@/lib/utils";
 import { error as toastError } from "@/lib/toast";
+import { HowTo } from "@/components/HowTo";
 
 const MAX_CAUSE_URLS = 3;
 
@@ -81,6 +82,18 @@ export default function NewClaimPage() {
           bucket, and — if covered — pays out to your wallet on the same transaction.
         </p>
       </div>
+
+      <HowTo
+        id="file-claim"
+        title="Evidence that works, evidence that doesn't"
+        intro="GenLayer validators independently fetch every URL you paste. Some sites are friendly to their fetcher, some aren't — the difference will save you a wasted consensus round."
+        items={[
+          { label: "Do use", body: "rated.network, beaconcha.in, beaconscan.com, mintscan.io — public HTML that renders without JavaScript." },
+          { label: "Cause evidence", body: "Client release notes (Prysm / Lighthouse / Nimbus / Teku), operator post-mortems on Mirror or blog, incident threads on ethresear.ch or r/ethstaker." },
+          { label: "Don't use", body: "Twitter/X live pages (JS-only), Etherscan validator queries (403 to non-browser fetchers), operator dashboards behind auth." },
+          { label: "Wait for the ruling", body: "Independent fetch → LLM cause ruling → bucketed consensus → payout if covered. One to three minutes end to end." },
+        ]}
+      />
 
       <div className="card p-5 grid grid-cols-2 gap-3 text-sm">
         <SmallStat label="Validator"   value={policy.validator_identifier} />

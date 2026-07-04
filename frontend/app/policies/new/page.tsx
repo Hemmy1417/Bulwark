@@ -7,6 +7,7 @@ import { useWallet } from "@/lib/genlayer/wallet";
 import { parseGen, formatGen } from "@/lib/utils";
 import { error as toastError } from "@/lib/toast";
 import { useRouter } from "next/navigation";
+import { HowTo } from "@/components/HowTo";
 
 const DURATIONS = [7, 30, 90] as const;
 
@@ -59,6 +60,18 @@ export default function NewPolicyPage() {
           within that window, file a claim and let the AI panel rule.
         </p>
       </div>
+
+      <HowTo
+        id="buy-policy"
+        title="Binding cover in four steps"
+        intro="A policy binds instantly the moment you sign. Coverage starts from the current block and runs for the duration you pick."
+        items={[
+          { label: "Pick a validator", body: "Ethereum uses a numeric index (e.g. 123456). Cosmos and EigenLayer use a bech32 or hex operator address." },
+          { label: "Choose coverage",  body: "How much GEN you want paid out if a covered slashing happens. Bounds are 0.1 GEN to 10 GEN in the MVP." },
+          { label: "Pick duration",    body: "7, 30, or 90 days. Longer coverage costs a higher premium rate because the risk window is wider." },
+          { label: "Pay the premium",  body: "MetaMask sends the quoted GEN premium. The contract escrows it into the reserve that will pay your claim." },
+        ]}
+      />
 
       <div className="card p-6 space-y-5">
 

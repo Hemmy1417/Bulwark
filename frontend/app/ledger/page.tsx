@@ -6,6 +6,7 @@ import { useClaimLedger } from "@/lib/hooks/useBulwark";
 import { formatGen } from "@/lib/utils";
 import { AddressDisplay } from "@/components/AddressDisplay";
 import type { Claim } from "@/lib/contracts/types";
+import { HowTo } from "@/components/HowTo";
 
 const causeChipClass = (cause: string) => {
   switch (cause) {
@@ -39,6 +40,18 @@ export default function LedgerPage() {
           verifiable on-chain, all replay-checkable.
         </p>
       </div>
+
+      <HowTo
+        id="ledger"
+        title="Reading the ledger"
+        intro="Every claim Bulwark has ever ruled on lives here. No moderation, no filtering — the full record so anyone can audit the panel's history."
+        items={[
+          { label: "Cause",  body: "The AI's cause bucket for the slashing. Green (BUG / UNAVOIDABLE) paid out. Red / grey did not." },
+          { label: "Status", body: "Payment state. PAID means the transfer landed. PENDING_PAYOUT is an approved claim waiting on reserve top-up." },
+          { label: "Payout", body: "Actual GEN transferred to the claimant. Zero for rejected claims — those are still logged so the reasoning is public." },
+          { label: "Drill in", body: "Click any claim id to open the full detail: evidence URLs, AI reasoning paragraph, confidence score, block filed." },
+        ]}
+      />
 
       {isLoading ? (
         <div className="card p-10 flex items-center justify-center">

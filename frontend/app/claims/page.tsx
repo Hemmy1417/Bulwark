@@ -6,6 +6,7 @@ import { useMyClaims } from "@/lib/hooks/useBulwark";
 import { useWallet } from "@/lib/genlayer/wallet";
 import { formatGen } from "@/lib/utils";
 import type { Claim } from "@/lib/contracts/types";
+import { HowTo } from "@/components/HowTo";
 
 const statusChipClass = (status: string) => {
   switch (status) {
@@ -36,6 +37,17 @@ export default function MyClaimsPage() {
         <div className="eyebrow mb-1">Adjudication history</div>
         <h1 className="display text-4xl">My claims</h1>
       </div>
+
+      <HowTo
+        id="my-claims"
+        title="Reading a claim ruling"
+        items={[
+          { label: "Cause",   body: "The AI's bucketed verdict — BUG or UNAVOIDABLE pay out, NEGLIGENCE or NOT_SLASHED don't." },
+          { label: "Status",  body: "PAID = coverage transferred. APPROVED = ruled covered, payout queued. PENDING_PAYOUT = reserve short; retry after owner tops up. REJECTED = not covered." },
+          { label: "Confidence", body: "How firmly the panel could ground its ruling in the evidence. Under 60 usually means the evidence was thin, not wrong." },
+          { label: "Reasoning",  body: "Click any claim to see the AI's 2–3 sentence rationale citing the specific evidence. Fully public and replay-verifiable." },
+        ]}
+      />
 
       {!isConnected ? (
         <EmptyCard title="Connect a wallet" body="Your filed claims show up here." />
