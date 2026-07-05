@@ -14,9 +14,15 @@ venv/
 # Node
 node_modules/
 .next/
+.turbo/
 out/
 dist/
 *.log
+*.tsbuildinfo
+
+# Deploy artifacts
+scratch/
+.deploy-history/
 
 # OS
 .DS_Store
