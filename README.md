@@ -107,13 +107,13 @@ Bulwark/
 
 ## Contract
 
-- **Address:** `0xC7893b637a064842a15eD38911d2603eE787e99E`
+- **Address:** `0x41C2ab5077A6Bf7c822d2f1175901257E8deA525`
 - **Network:** GenLayer Studionet (chainId `61999`, RPC `https://studio.genlayer.com/api`)
 - **Owner:** the deploying wallet — seeds the reserve and cannot withdraw
 
 Read state:
 ```bash
-genlayer call 0xC7893b637a064842a15eD38911d2603eE787e99E get_protocol_params
+genlayer call 0x41C2ab5077A6Bf7c822d2f1175901257E8deA525 get_protocol_params
 ```
 
 ---
