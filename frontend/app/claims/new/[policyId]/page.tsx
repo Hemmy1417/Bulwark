@@ -85,13 +85,15 @@ export default function NewClaimPage() {
 
       <HowTo
         id="file-claim"
-        title="Evidence that works, evidence that doesn't"
-        intro="GenLayer validators independently fetch every URL you paste. Some sites are friendly to their fetcher, some aren't — the difference will save you a wasted consensus round."
+        reference="BW-03"
+        title="Schedule of admissible evidence"
+        clauseLabel="Item"
+        intro="GenLayer validators fetch each cited URL independently. Sources must render as public HTML without client-side scripting; anything gated, JavaScript-only, or rate-limited is inadmissible and will vitiate the round."
         items={[
-          { label: "Do use", body: "rated.network, beaconcha.in, beaconscan.com, mintscan.io — public HTML that renders without JavaScript." },
-          { label: "Cause evidence", body: "Client release notes (Prysm / Lighthouse / Nimbus / Teku), operator post-mortems on Mirror or blog, incident threads on ethresear.ch or r/ethstaker." },
-          { label: "Don't use", body: "Twitter/X live pages (JS-only), Etherscan validator queries (403 to non-browser fetchers), operator dashboards behind auth." },
-          { label: "Wait for the ruling", body: "Independent fetch → LLM cause ruling → bucketed consensus → payout if covered. One to three minutes end to end." },
+          { label: "Admissible — validator status",  body: "beaconscan.com, mintscan.io, or any chain-native explorer that returns a rendered HTML page confirming slashing status without JavaScript." },
+          { label: "Admissible — cause narrative",   body: "Official client release notes (Prysm, Lighthouse, Nimbus, Teku), operator post-mortems hosted as static markdown or plain HTML, and public incident reports." },
+          { label: "Inadmissible",                    body: "beaconcha.in and Etherscan (403 to validator fetchers), Twitter/X live pages (JavaScript shell), and any resource requiring authentication." },
+          { label: "Adjudication timing",             body: "Independent fetch, LLM ruling, bucketed consensus, and — where covered — settlement occur on the same transaction. Allow one to three minutes for validators to converge." },
         ]}
       />
 

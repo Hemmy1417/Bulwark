@@ -40,17 +40,19 @@ export default function PoolPage() {
     <div className="mx-auto max-w-5xl px-5 py-12 space-y-8">
       <div>
         <div className="eyebrow mb-1">Reserve room</div>
-        <h1 className="display text-4xl">Pool</h1>
+        <h1 className="display text-4xl">Underwriting pool</h1>
       </div>
 
       <HowTo
         id="pool"
-        title="How the reserve underwrites payouts"
+        reference="BW-06"
+        title="Constitution of the underwriting reserve"
+        intro="The reserve is the capital account against which every claim is settled. Its constitution is enforced on-chain and its balance is a matter of public record."
         items={[
-          { label: "Reserve",   body: "Total GEN the contract can pay out. Grows from every premium collected plus any owner top-ups. Cannot be withdrawn — additive only." },
-          { label: "Solvency guard", body: "A new policy only binds if reserve ≥ its coverage, so an early buyer is never sold cover the pool cannot honour." },
-          { label: "Rates",     body: "Premium rate scales with duration: 7d = 1.0%, 30d = 5.0%, 90d = 12% of coverage. Fixed on-chain in the MVP." },
-          { label: "Owner top-up", body: "The deploying wallet sees a Seed the reserve panel below. Deposits stack additively — cannot touch premiums already collected." },
+          { label: "Reserve",         body: "The aggregate GEN capital available for settlement. The balance accrues from premiums received and any additional capital contributed by the protocol owner. It is additive only — no withdrawal mechanism exists." },
+          { label: "Solvency guarantee", body: "No new policy shall bind unless the reserve, inclusive of the incoming premium, is at least equal to the sum insured. This precondition is enforced by the contract at the moment of writing." },
+          { label: "Premium schedule",  body: "The rate scales with the period of insurance: 1.0 per cent for 7 days, 5.0 per cent for 30 days, and 12 per cent for 90 days of the sum insured. Rates are fixed on-chain for the MVP." },
+          { label: "Owner top-up",     body: "The deploying wallet may deposit further capital at any time via the Seed the reserve panel below. Deposits are ring-fenced and cannot alter the treatment of premiums already received." },
         ]}
       />
 

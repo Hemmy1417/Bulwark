@@ -67,7 +67,7 @@ export default function NewPolicyPage() {
     <div className="mx-auto max-w-3xl px-5 py-14 space-y-8">
       <div className="text-center max-w-xl mx-auto">
         <div className="eyebrow mb-2">Bind cover</div>
-        <h1 className="display text-4xl mb-3">Insure a validator</h1>
+        <h1 className="display text-4xl mb-3">Bind cover</h1>
         <p className="text-ivory-soft/70">
           Coverage runs from the block your policy binds. If your validator is slashed
           within that window, file a claim and let the AI panel rule.
@@ -76,13 +76,14 @@ export default function NewPolicyPage() {
 
       <HowTo
         id="buy-policy"
-        title="Binding cover in four steps"
-        intro="A policy binds instantly the moment you sign. Coverage starts from the current block and runs for the duration you pick."
+        reference="BW-01"
+        title="Procedure for binding cover"
+        intro="Cover binds on execution of the premium transfer. The period of insurance commences at the block in which the policy is written and expires at the end of the elected term."
         items={[
-          { label: "Pick a validator", body: "Ethereum uses a numeric index (e.g. 123456). Cosmos and EigenLayer use a bech32 or hex operator address." },
-          { label: "Choose coverage",  body: "How much GEN you want paid out if a covered slashing happens. Bounds are 0.1 GEN to 10 GEN in the MVP." },
-          { label: "Pick duration",    body: "7, 30, or 90 days. Longer coverage costs a higher premium rate because the risk window is wider." },
-          { label: "Pay the premium",  body: "MetaMask sends the quoted GEN premium. The contract escrows it into the reserve that will pay your claim." },
+          { label: "Nomination of the validator", body: "Identify the validator to be insured. Ethereum requires the numeric beacon-chain index; Cosmos and EigenLayer use the operator's bech32 or hex address." },
+          { label: "Election of the sum insured", body: "State the maximum payout should a covered loss occur. Sums must fall within the underwritten range of 0.1 GEN to 10 GEN inclusive." },
+          { label: "Election of the period",     body: "Choose one of the underwritten terms — 7, 30, or 90 days. The premium rate scales with the length of exposure." },
+          { label: "Settlement of the premium",  body: "Sign the quoted premium in GEN. Funds are held in the protocol reserve and released only against a covered ruling." },
         ]}
       />
 

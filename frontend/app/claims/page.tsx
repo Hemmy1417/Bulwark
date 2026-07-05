@@ -35,17 +35,20 @@ export default function MyClaimsPage() {
     <div className="mx-auto max-w-5xl px-5 py-12 space-y-6">
       <div>
         <div className="eyebrow mb-1">Adjudication history</div>
-        <h1 className="display text-4xl">My claims</h1>
+        <h1 className="display text-4xl">Claims of record</h1>
       </div>
 
       <HowTo
         id="my-claims"
-        title="Reading a claim ruling"
+        reference="BW-04"
+        title="Interpretation of adjudication findings"
+        clauseLabel="Field"
+        intro="Each ruling is a matter of public record. The four fields below carry the full weight of the panel's decision — the reasoning paragraph on the claim page discloses how the panel arrived at it."
         items={[
-          { label: "Cause",   body: "The AI's bucketed verdict — BUG or UNAVOIDABLE pay out, NEGLIGENCE or NOT_SLASHED don't." },
-          { label: "Status",  body: "PAID = coverage transferred. APPROVED = ruled covered, payout queued. PENDING_PAYOUT = reserve short; retry after owner tops up. REJECTED = not covered." },
-          { label: "Confidence", body: "How firmly the panel could ground its ruling in the evidence. Under 60 usually means the evidence was thin, not wrong." },
-          { label: "Reasoning",  body: "Click any claim to see the AI's 2–3 sentence rationale citing the specific evidence. Fully public and replay-verifiable." },
+          { label: "Cause",      body: "The panel's bucketed finding. BUG and UNAVOIDABLE constitute covered losses; NEGLIGENCE and NOT_SLASHED do not." },
+          { label: "Status",     body: "PAID indicates the sum insured has been transferred. APPROVED denotes a covered ruling with settlement queued. PENDING_PAYOUT arises where the reserve is temporarily short of the claim. REJECTED is a matter closed." },
+          { label: "Confidence", body: "A calibrated integer 0–100 indicating how firmly the panel could ground its ruling in the cited evidence. Values under 60 typically reflect thin or contradictory sources rather than error." },
+          { label: "Reasoning",  body: "A short rationale in the panel's own words, citing the specific evidence relied upon. All rulings are replay-verifiable against the block state at the time of adjudication." },
         ]}
       />
 

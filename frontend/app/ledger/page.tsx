@@ -33,8 +33,8 @@ export default function LedgerPage() {
   return (
     <div className="mx-auto max-w-5xl px-5 py-12 space-y-6">
       <div className="text-center max-w-xl mx-auto">
-        <div className="eyebrow mb-1">Public record</div>
-        <h1 className="display text-4xl mb-3">Ledger</h1>
+        <div className="eyebrow mb-1">Public register</div>
+        <h1 className="display text-4xl mb-3">The ledger</h1>
         <p className="text-ivory-soft/70">
           Every claim Bulwark has ever adjudicated. Evidence, ruling, and payout — all
           verifiable on-chain, all replay-checkable.
@@ -43,13 +43,15 @@ export default function LedgerPage() {
 
       <HowTo
         id="ledger"
-        title="Reading the ledger"
-        intro="Every claim Bulwark has ever ruled on lives here. No moderation, no filtering — the full record so anyone can audit the panel's history."
+        reference="BW-05"
+        title="Reading the public ledger"
+        clauseLabel="Column"
+        intro="Every ruling issued by the panel is entered into the public register in chronological order. Nothing is redacted, filtered, or reordered — the register exists so that any party may audit the panel's conduct."
         items={[
-          { label: "Cause",  body: "The AI's cause bucket for the slashing. Green (BUG / UNAVOIDABLE) paid out. Red / grey did not." },
-          { label: "Status", body: "Payment state. PAID means the transfer landed. PENDING_PAYOUT is an approved claim waiting on reserve top-up." },
-          { label: "Payout", body: "Actual GEN transferred to the claimant. Zero for rejected claims — those are still logged so the reasoning is public." },
-          { label: "Drill in", body: "Click any claim id to open the full detail: evidence URLs, AI reasoning paragraph, confidence score, block filed." },
+          { label: "Cause",   body: "The panel's finding on cause. Entries marked BUG or UNAVOIDABLE constituted covered losses; NEGLIGENCE and NOT_SLASHED are rejections." },
+          { label: "Status",  body: "The settlement state at the time of viewing. PAID indicates the sum insured was discharged. PENDING_PAYOUT is a covered ruling awaiting reserve capacity." },
+          { label: "Payout",  body: "The sum insured actually transferred to the claimant. Zero on rejections, which are nonetheless preserved so the panel's reasoning remains a matter of record." },
+          { label: "Drill in", body: "Selecting any claim number opens the full adjudication file — cited evidence, reasoning paragraph, confidence, and originating block." },
         ]}
       />
 

@@ -16,8 +16,8 @@ export default function MyPoliciesPage() {
     <div className="mx-auto max-w-5xl px-5 py-12 space-y-6">
       <div className="flex items-end justify-between flex-wrap gap-3">
         <div>
-          <div className="eyebrow mb-1">Portfolio</div>
-          <h1 className="display text-4xl">My policies</h1>
+          <div className="eyebrow mb-1">Schedule of cover</div>
+          <h1 className="display text-4xl">Policies of record</h1>
         </div>
         <Link href="/policies/new" className="btn btn-gold">
           <PlusCircle className="w-4 h-4" />
@@ -27,12 +27,15 @@ export default function MyPoliciesPage() {
 
       <HowTo
         id="my-policies"
-        title="Reading your policies"
+        reference="BW-02"
+        title="Interpretation of policy status"
+        clauseLabel="Status"
+        intro="Each policy on record carries one of four states. The state governs what actions remain available to the insured."
         items={[
-          { label: "ACTIVE",   body: "Coverage is live. Slash within the duration window and you can file a claim from here." },
-          { label: "CLAIMED",  body: "A covered slashing was ruled and the payout has hit — or is queued in PENDING_PAYOUT." },
-          { label: "REJECTED", body: "A claim was filed but the AI panel ruled the cause outside coverage (typically NEGLIGENCE or NOT_SLASHED)." },
-          { label: "EXPIRED",  body: "The duration window closed without a claim. You keep any peace of mind, the pool keeps the premium." },
+          { label: "ACTIVE",   body: "Cover is in force. Should a slashing occur within the period, the insured may issue notice of claim from this schedule." },
+          { label: "CLAIMED",  body: "A covered loss has been adjudicated. The sum insured has been discharged, or is queued as PENDING_PAYOUT should reserve capacity require top-up." },
+          { label: "REJECTED", body: "A claim was raised but the panel ruled the loss outside cover — typically NEGLIGENCE or NOT_SLASHED. Cover is discharged; the premium is retained by the pool." },
+          { label: "EXPIRED",  body: "The period elapsed without a claim. Cover falls away and the premium is retained by the pool in the ordinary course." },
         ]}
       />
 
