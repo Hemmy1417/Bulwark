@@ -179,7 +179,7 @@ class Bulwark {
     coverageWei: bigint;
     durationDays: number;
     premiumWei: bigint;
-  }): Promise<TransactionReceipt> {
+  }): Promise<{ receipt: TransactionReceipt; txHash: string }> {
     try {
       const txHash = await this.client.writeContract({
         address: this.contractAddress,
@@ -187,7 +187,8 @@ class Bulwark {
         args: [args.validatorIdentifier, args.chainLabel, args.coverageWei, args.durationDays],
         value: args.premiumWei,
       });
-      return await this.waitAndVerify(txHash);
+      const receipt = await this.waitAndVerify(txHash);
+      return { receipt, txHash: String(txHash) };
     } catch (err) {
       console.error("[Bulwark] buyPolicy failed:", err);
       throw err instanceof Error ? err : new Error("Failed to buy policy");
@@ -198,7 +199,7 @@ class Bulwark {
     policyId: string;
     primaryEvidenceUrl: string;
     causeEvidenceUrls: string[];
-  }): Promise<TransactionReceipt> {
+  }): Promise<{ receipt: TransactionReceipt; txHash: string }> {
     try {
       const txHash = await this.client.writeContract({
         address: this.contractAddress,
@@ -206,14 +207,15 @@ class Bulwark {
         args: [args.policyId, args.primaryEvidenceUrl, args.causeEvidenceUrls],
         value: BigInt(0),
       });
-      return await this.waitAndVerify(txHash);
+      const receipt = await this.waitAndVerify(txHash);
+      return { receipt, txHash: String(txHash) };
     } catch (err) {
       console.error("[Bulwark] fileClaim failed:", err);
       throw err instanceof Error ? err : new Error("Failed to file claim");
     }
   }
 
-  async ownerSeedReserve(amountWei: bigint): Promise<TransactionReceipt> {
+  async ownerSeedReserve(amountWei: bigint): Promise<{ receipt: TransactionReceipt; txHash: string }> {
     try {
       const txHash = await this.client.writeContract({
         address: this.contractAddress,
@@ -221,14 +223,15 @@ class Bulwark {
         args: [],
         value: amountWei,
       });
-      return await this.waitAndVerify(txHash);
+      const receipt = await this.waitAndVerify(txHash);
+      return { receipt, txHash: String(txHash) };
     } catch (err) {
       console.error("[Bulwark] ownerSeedReserve failed:", err);
       throw err instanceof Error ? err : new Error("Failed to seed reserve");
     }
   }
 
-  async settlePendingPayout(claimId: string): Promise<TransactionReceipt> {
+  async settlePendingPayout(claimId: string): Promise<{ receipt: TransactionReceipt; txHash: string }> {
     try {
       const txHash = await this.client.writeContract({
         address: this.contractAddress,
@@ -236,7 +239,8 @@ class Bulwark {
         args: [claimId],
         value: BigInt(0),
       });
-      return await this.waitAndVerify(txHash);
+      const receipt = await this.waitAndVerify(txHash);
+      return { receipt, txHash: String(txHash) };
     } catch (err) {
       console.error("[Bulwark] settlePendingPayout failed:", err);
       throw err instanceof Error ? err : new Error("Failed to settle payout");

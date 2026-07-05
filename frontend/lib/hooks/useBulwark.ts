@@ -3,7 +3,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import Bulwark from "../contracts/bulwark";
-import { CONTRACT_ADDRESS, CONTRACT_CONFIGURED } from "../config";
+import { CONTRACT_ADDRESS, CONTRACT_CONFIGURED, explorerTxUrl } from "../config";
 import { useWallet } from "../genlayer/wallet";
 import { success, error } from "../toast";
 import type { Policy, Claim, ProtocolParams, PremiumQuote } from "../contracts/types";
@@ -124,11 +124,14 @@ export function useBuyPolicy() {
       const receipt = await contract.buyPolicy(args);
       return { receipt, payload: contract.parseReturnPayload(receipt) };
     },
-    onSuccess: () => {
+    onSuccess: (data: any) => {
       queryClient.invalidateQueries({ queryKey: ["protocolParams"] });
       queryClient.invalidateQueries({ queryKey: ["myPolicies"] });
       setIsBuying(false);
-      success("Policy bound!", { description: "Your coverage is now active." });
+      success("Policy bound!", {
+        description: "Your coverage is now active.",
+        explorerUrl: explorerTxUrl(data?.txHash),
+      });
     },
     onError: (err: any) => {
       setIsBuying(false);
@@ -159,8 +162,8 @@ export function useFileClaim() {
       if (!contract) throw new Error("Contract not configured.");
       if (!address) throw new Error("Wallet not connected.");
       setIsFiling(true);
-      const receipt = await contract.fileClaim(args);
-      return { receipt, payload: contract.parseReturnPayload(receipt) };
+      const { receipt, txHash } = await contract.fileClaim(args);
+      return { receipt, txHash, payload: contract.parseReturnPayload(receipt) };
     },
     onSuccess: (data: any) => {
       queryClient.invalidateQueries({ queryKey: ["protocolParams"] });
@@ -172,10 +175,12 @@ export function useFileClaim() {
       if (p?.covered) {
         success("Claim approved!", {
           description: `Cause: ${p.ai_cause}. Payout: ${p.payout_wei} wei.`,
+          explorerUrl: explorerTxUrl(data?.txHash),
         });
       } else {
         success("Claim recorded", {
           description: `AI ruling: ${p?.ai_cause ?? "unknown"} — not covered.`,
+          explorerUrl: explorerTxUrl(data?.txHash),
         });
       }
     },
@@ -204,10 +209,10 @@ export function useOwnerSeedReserve() {
       setIsSeeding(true);
       return contract.ownerSeedReserve(amountWei);
     },
-    onSuccess: () => {
+    onSuccess: (data: any) => {
       queryClient.invalidateQueries({ queryKey: ["protocolParams"] });
       setIsSeeding(false);
-      success("Reserve topped up");
+      success("Reserve topped up", { explorerUrl: explorerTxUrl(data?.txHash) });
     },
     onError: (err: any) => {
       setIsSeeding(false);
