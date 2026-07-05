@@ -19,6 +19,9 @@ type WalletState = {
   wallets: Discovered[];
   hasWallet: boolean;
   isConnected: boolean;
+  chainId: string | null;         // hex string, e.g. "0xf22f"; null until we know
+  wrongChain: boolean;            // true when chainId is known and ≠ CHAIN_HEX
+  switchChain: () => Promise<void>;
   connect: (w?: Discovered) => Promise<void>;
   disconnect: () => void;
 };
@@ -57,13 +60,25 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
   const [client, setClient] = useState<Client | null>(null);
   const [connecting, setConnecting] = useState(false);
   const [wallets, setWallets] = useState<Discovered[]>([]);
+  const [chainId, setChainId] = useState<string | null>(null);
   const providerRef = useRef<Eip1193 | null>(null);
 
   const disconnect = useCallback(() => {
     setAddress("");
     setClient(null);
+    setChainId(null);
     providerRef.current = null;
     localStorage.removeItem(CONNECTED_KEY);
+  }, []);
+
+  const switchChain = useCallback(async () => {
+    const p = providerRef.current;
+    if (!p) return;
+    await ensureChain(p);
+    try {
+      const cid: string = await p.request({ method: "eth_chainId" });
+      setChainId(cid);
+    } catch { /* silent — chainChanged listener will catch up */ }
   }, []);
 
   const bind = useCallback(
@@ -81,8 +96,16 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
           disconnect();
         }
       };
+      const onChain = (cid: string) => setChainId(cid);
       provider.removeListener?.("accountsChanged", onAccounts);
       provider.on?.("accountsChanged", onAccounts);
+      provider.removeListener?.("chainChanged", onChain);
+      provider.on?.("chainChanged", onChain);
+      // Prime chainId immediately so the banner state is accurate on first paint
+      provider
+        .request({ method: "eth_chainId" })
+        .then((cid: string) => setChainId(cid))
+        .catch(() => setChainId(null));
     },
     [disconnect],
   );
@@ -148,6 +171,13 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     [wallets, bind],
   );
 
+  // Normalise both sides to lowercase — different wallets return chainId in
+  // varying casing and some pad with leading zeros.
+  const normalize = (s: string | null) =>
+    s ? s.toLowerCase().replace(/^0x0*/, "0x") : null;
+  const wrongChain =
+    !!address && chainId !== null && normalize(chainId) !== normalize(CHAIN_HEX);
+
   return (
     <Ctx.Provider
       value={{
@@ -158,6 +188,9 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
         wallets,
         hasWallet: wallets.length > 0,
         isConnected: !!address,
+        chainId,
+        wrongChain,
+        switchChain,
         connect,
         disconnect,
       }}

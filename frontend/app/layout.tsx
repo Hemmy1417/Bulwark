@@ -3,6 +3,7 @@ import { Inter, EB_Garamond, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import { Providers } from "./providers";
 import { Nav } from "@/components/Nav";
+import { NetworkBanner } from "@/components/NetworkBanner";
 import { LiveBackdrop } from "@/components/LiveBackdrop";
 
 const inter = Inter({
@@ -48,6 +49,7 @@ export default function RootLayout({
         <LiveBackdrop />
         <Providers>
           <Nav />
+          <NetworkBanner />
           <main className="flex-1 relative">{children}</main>
           <footer className="mt-16 border-t border-hairline">
             <div className="mx-auto max-w-6xl px-5 py-6 flex flex-wrap items-center justify-between gap-3 text-xs">

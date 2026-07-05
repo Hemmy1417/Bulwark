@@ -1,14 +1,15 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { Loader2, ScrollText, Plus, X, ExternalLink, AlertCircle } from "lucide-react";
+import { Loader2, ScrollText, Plus, X, ExternalLink, AlertCircle, CheckCircle2, AlertTriangle } from "lucide-react";
 import Link from "next/link";
 import { usePolicy, useFileClaim } from "@/lib/hooks/useBulwark";
 import { useWallet } from "@/lib/genlayer/wallet";
 import { formatGen } from "@/lib/utils";
 import { error as toastError } from "@/lib/toast";
 import { HowTo } from "@/components/HowTo";
+import { classify, preflight, type EvidenceVerdict } from "@/lib/evidence";
 
 const MAX_CAUSE_URLS = 3;
 
@@ -33,6 +34,11 @@ export default function NewClaimPage() {
   const removeCauseUrl = (i: number) =>
     setCauseUrls((s) => (s.length === 1 ? s : s.filter((_, idx) => idx !== i)));
 
+  const check = useMemo(
+    () => preflight(primary, causeUrls),
+    [primary, causeUrls],
+  );
+
   const submit = () => {
     if (!isConnected) return toastError("Connect your wallet");
     const p = primary.trim();
@@ -41,6 +47,9 @@ export default function NewClaimPage() {
     const clean = causeUrls.map((u) => u.trim()).filter(Boolean);
     for (const u of clean) {
       if (!/^https?:\/\//i.test(u)) return toastError("Cause URLs must start with http(s)://");
+    }
+    if (check.hasBlocked) {
+      return toastError("One or more URLs are on the panel's inadmissible list. Replace them before submitting.");
     }
     fileClaim({
       policyId,
@@ -118,15 +127,16 @@ export default function NewClaimPage() {
       <div className="card p-6 space-y-5">
         <Field
           label="Primary evidence URL (validator status)"
-          hint="rated.network/o/<operator> · beaconcha.in/validator/<index> · beaconscan.com · mintscan.io"
+          hint="beaconscan.com/validator/<index> · mintscan.io/<chain>/validators/<addr> · a public Gist. Avoid beaconcha.in (403) and Etherscan."
         >
           <input
             className="input mono text-sm"
-            placeholder="https://rated.network/o/…"
+            placeholder="https://beaconscan.com/validator/…"
             value={primary}
             onChange={(e) => setPrimary(e.target.value)}
             disabled={blocked}
           />
+          <EvidencePill verdict={check.primary} url={primary} />
         </Field>
 
         <div className="space-y-3">
@@ -137,24 +147,27 @@ export default function NewClaimPage() {
             </p>
           </div>
           {causeUrls.map((u, i) => (
-            <div key={i} className="flex items-center gap-2">
-              <input
-                className="input mono text-sm"
-                placeholder="https://…"
-                value={u}
-                onChange={(e) => setCauseUrl(i, e.target.value)}
-                disabled={blocked}
-              />
-              {causeUrls.length > 1 && (
-                <button
-                  className="btn btn-ghost"
-                  onClick={() => removeCauseUrl(i)}
+            <div key={i} className="space-y-1.5">
+              <div className="flex items-center gap-2">
+                <input
+                  className="input mono text-sm"
+                  placeholder="https://…"
+                  value={u}
+                  onChange={(e) => setCauseUrl(i, e.target.value)}
                   disabled={blocked}
-                  aria-label="Remove URL"
-                >
-                  <X className="w-3.5 h-3.5" />
-                </button>
-              )}
+                />
+                {causeUrls.length > 1 && (
+                  <button
+                    className="btn btn-ghost"
+                    onClick={() => removeCauseUrl(i)}
+                    disabled={blocked}
+                    aria-label="Remove URL"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
+              <EvidencePill verdict={check.cause[i]} url={u} />
             </div>
           ))}
           {causeUrls.length < MAX_CAUSE_URLS && (
@@ -182,10 +195,23 @@ export default function NewClaimPage() {
           </div>
         )}
 
+        {check.hasBlocked && (
+          <div
+            className="p-3 rounded-sm flex items-start gap-2 text-sm"
+            style={{ background: "rgba(195, 106, 106, 0.08)", border: "1px solid rgba(195, 106, 106, 0.3)" }}
+          >
+            <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" style={{ color: "var(--danger)" }} />
+            <span>
+              At least one URL is on the panel's inadmissible list. Replace or remove it before filing —
+              submitting as-is would waste the transaction fee on evidence the validators cannot read.
+            </span>
+          </div>
+        )}
+
         <button
           className="btn btn-gold w-full"
           onClick={submit}
-          disabled={blocked || isFiling}
+          disabled={blocked || isFiling || check.hasBlocked}
         >
           {isFiling ? (
             <><Loader2 className="w-4 h-4 animate-spin" /> Adjudicating…</>
@@ -197,12 +223,12 @@ export default function NewClaimPage() {
 
       <div className="text-center text-xs text-ivory-soft/50">
         Not sure where to look?{" "}
-        <a href="https://beaconcha.in" target="_blank" rel="noreferrer" className="text-gold-bright hover:underline">
-          beaconcha.in <ExternalLink className="inline w-3 h-3" />
+        <a href="https://beaconscan.com" target="_blank" rel="noreferrer" className="text-gold-bright hover:underline">
+          beaconscan.com <ExternalLink className="inline w-3 h-3" />
         </a>{" "}
         ·{" "}
-        <a href="https://rated.network" target="_blank" rel="noreferrer" className="text-gold-bright hover:underline">
-          rated.network <ExternalLink className="inline w-3 h-3" />
+        <a href="https://gist.github.com" target="_blank" rel="noreferrer" className="text-gold-bright hover:underline">
+          gist.github.com <ExternalLink className="inline w-3 h-3" />
         </a>
       </div>
     </div>
@@ -224,6 +250,28 @@ function SmallStat({ label, value }: { label: string; value: string }) {
     <div>
       <div className="eyebrow mb-0.5">{label}</div>
       <div className="mono text-ivory">{value}</div>
+    </div>
+  );
+}
+
+function EvidencePill({ verdict, url }: { verdict: EvidenceVerdict; url: string }) {
+  // Nothing shown for an empty field — it's not yet a verdict, it's just blank.
+  if (!url.trim()) return null;
+
+  const palette = verdict.status === "ok"
+    ? { bg: "rgba(114, 176, 137, 0.10)", border: "rgba(114, 176, 137, 0.30)", fg: "#8FCB9E", Icon: CheckCircle2 }
+    : verdict.status === "warn"
+    ? { bg: "rgba(230, 199, 122, 0.10)", border: "rgba(230, 199, 122, 0.30)", fg: "#E6C77A", Icon: AlertTriangle }
+    : { bg: "rgba(195, 106, 106, 0.10)", border: "rgba(195, 106, 106, 0.30)", fg: "#E58686", Icon: AlertCircle };
+
+  const { Icon } = palette;
+  return (
+    <div
+      className="flex items-start gap-1.5 mt-1.5 px-2.5 py-1.5 rounded-sm text-xs"
+      style={{ background: palette.bg, border: `1px solid ${palette.border}`, color: palette.fg }}
+    >
+      <Icon className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+      <span className="leading-snug">{verdict.note ?? ""}</span>
     </div>
   );
 }
