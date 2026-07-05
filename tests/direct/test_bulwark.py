@@ -36,7 +36,7 @@ class _VmModule:
 class _Vm:
     vm = _VmModule
     class message:
-        sender_account = "0x0000000000000000000000000000000000000000"
+        sender_address = "0x0000000000000000000000000000000000000000"
         value = 0
         block_number = 0
 
@@ -111,14 +111,14 @@ def module():
 
 @pytest.fixture
 def contract(module):
-    module.gl.message.sender_account = OWNER
+    module.gl.message.sender_address = OWNER
     module.gl.message.value = 0
     module.gl.message.block_number = 1000
     return module.Bulwark(owner=OWNER)
 
 
 def _as(module, sender, value=0, block=None):
-    module.gl.message.sender_account = sender
+    module.gl.message.sender_address = sender
     module.gl.message.value = value
     if block is not None:
         module.gl.message.block_number = block
@@ -182,7 +182,13 @@ def test_buy_policy_happy_path(module, contract):
     assert policy["status"] == "ACTIVE"
     assert int(policy["coverage_wei"]) == coverage
     assert int(policy["premium_wei"]) == premium
-    assert policy["expires_at_block"] == 2030
+    # Since Studionet has no on-chain clock, `_now()` returns a monotonic
+    # combined counter (policy_counter + claim_counter). After this first
+    # buy the policy_counter has been incremented to 1, so created_at_block
+    # is 1 and expires_at_block is 1 + 30. This is deliberate — the frontend
+    # tracks browser-side timestamps for real elapsed-time UI.
+    assert policy["created_at_block"] == 1
+    assert policy["expires_at_block"] == 31
 
     params = contract.get_protocol_params()
     assert params["active_policy_count"] == 1
