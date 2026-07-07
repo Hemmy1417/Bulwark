@@ -107,13 +107,16 @@ Bulwark/
 
 ## Contract
 
-- **Address:** `0x41C2ab5077A6Bf7c822d2f1175901257E8deA525`
+- **Address:** `0xC21e82DB32654A7f9b4681BcE27ffC4E1609A70C`
+
+> **Payout fix (July 2026).** Wallet payouts are sent as EVM external messages (an empty `@gl.evm.contract_interface` proxy executed by the contract's ghost account). The previous GenVM-call pattern errored at finalization on plain wallets and stranded the value; the contract was redeployed at the address above with the corrected transfer path.
+
 - **Network:** GenLayer Studionet (chainId `61999`, RPC `https://studio.genlayer.com/api`)
 - **Owner:** the deploying wallet — seeds the reserve and cannot withdraw
 
 Read state:
 ```bash
-genlayer call 0x41C2ab5077A6Bf7c822d2f1175901257E8deA525 get_protocol_params
+genlayer call 0xC21e82DB32654A7f9b4681BcE27ffC4E1609A70C get_protocol_params
 ```
 
 ---
