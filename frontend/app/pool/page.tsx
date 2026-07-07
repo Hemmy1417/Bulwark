@@ -37,7 +37,7 @@ export default function PoolPage() {
   };
 
   return (
-    <div className="mx-auto max-w-5xl px-5 py-12 space-y-8">
+    <div className="max-w-5xl px-6 lg:px-12 py-12 space-y-8">
       <div>
         <div className="eyebrow mb-1">Reserve room</div>
         <h1 className="display text-4xl">Underwriting pool</h1>

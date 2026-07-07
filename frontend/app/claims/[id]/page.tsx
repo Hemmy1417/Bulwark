@@ -15,7 +15,7 @@ export default function ClaimDetailPage() {
 
   if (isLoading) {
     return (
-      <div className="mx-auto max-w-3xl px-5 py-16 flex justify-center">
+      <div className="max-w-3xl px-6 lg:px-12 py-16 flex justify-center">
         <Loader2 className="w-6 h-6 animate-spin text-gold-bright" />
       </div>
     );
@@ -23,7 +23,7 @@ export default function ClaimDetailPage() {
 
   if (!claim) {
     return (
-      <div className="mx-auto max-w-3xl px-5 py-16 text-center space-y-4">
+      <div className="max-w-3xl px-6 lg:px-12 py-16 text-center space-y-4">
         <h1 className="display text-2xl">Claim not found</h1>
         <Link href="/ledger" className="btn btn-ghost">Back to ledger</Link>
       </div>
@@ -38,7 +38,7 @@ export default function ClaimDetailPage() {
   }[claim.status] ?? { border: "var(--hairline)", label: claim.status };
 
   return (
-    <div className="mx-auto max-w-3xl px-5 py-12 space-y-8">
+    <div className="max-w-3xl px-6 lg:px-12 py-12 space-y-8">
       <Link href="/ledger" className="inline-flex items-center gap-1.5 text-xs text-ivory-soft/60 hover:text-gold-bright">
         <ArrowLeft className="w-3 h-3" /> All claims
       </Link>

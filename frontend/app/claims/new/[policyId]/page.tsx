@@ -62,7 +62,7 @@ export default function NewClaimPage() {
 
   if (isLoading) {
     return (
-      <div className="mx-auto max-w-3xl px-5 py-16 flex justify-center">
+      <div className="max-w-3xl px-6 lg:px-12 py-16 flex justify-center">
         <Loader2 className="w-6 h-6 animate-spin text-gold-bright" />
       </div>
     );
@@ -70,7 +70,7 @@ export default function NewClaimPage() {
 
   if (!policy) {
     return (
-      <div className="mx-auto max-w-3xl px-5 py-16 text-center">
+      <div className="max-w-3xl px-6 lg:px-12 py-16 text-center">
         <h1 className="display text-2xl mb-2">Policy not found</h1>
         <Link href="/policies" className="btn btn-ghost mt-4">Back to policies</Link>
       </div>
@@ -82,7 +82,7 @@ export default function NewClaimPage() {
   const blocked = notOwner || notActive;
 
   return (
-    <div className="mx-auto max-w-3xl px-5 py-12 space-y-8">
+    <div className="max-w-3xl px-6 lg:px-12 py-12 space-y-8">
       <div className="text-center max-w-xl mx-auto">
         <div className="eyebrow mb-2">File a claim</div>
         <h1 className="display text-4xl mb-3">Policy #{policyId}</h1>

@@ -7,7 +7,7 @@ import { Compass, ArrowLeft } from "lucide-react";
  */
 export default function NotFound() {
   return (
-    <div className="mx-auto max-w-3xl px-5 py-16">
+    <div className="max-w-3xl px-6 lg:px-12 py-16">
       <div className="card p-8 space-y-6">
         <div className="flex items-start gap-4">
           <div

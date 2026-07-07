@@ -64,7 +64,7 @@ export default function NewPolicyPage() {
   };
 
   return (
-    <div className="mx-auto max-w-3xl px-5 py-14 space-y-8">
+    <div className="max-w-3xl px-6 lg:px-12 py-14 space-y-8">
       <div className="text-center max-w-xl mx-auto">
         <div className="eyebrow mb-2">Bind cover</div>
         <h1 className="display text-4xl mb-3">Bind cover</h1>

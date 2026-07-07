@@ -29,7 +29,7 @@ export default function HomePage() {
   const { data: params } = useProtocolParams();
 
   return (
-    <div className="mx-auto max-w-6xl px-5 pt-16 pb-8 space-y-16">
+    <div className="max-w-5xl px-6 lg:px-12 pt-16 pb-8 space-y-16">
 
       {/* ── Hero ───────────────────────────────────────────────────────── */}
       <section className="animate-fade-in text-center max-w-3xl mx-auto pt-6">

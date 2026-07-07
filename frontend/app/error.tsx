@@ -25,7 +25,7 @@ export default function GlobalError({
   }, [error]);
 
   return (
-    <div className="mx-auto max-w-3xl px-5 py-16">
+    <div className="max-w-3xl px-6 lg:px-12 py-16">
       <div
         className="card p-8 space-y-6"
         style={{ borderColor: "rgba(195, 106, 106, 0.35)" }}

@@ -31,7 +31,7 @@ export default function LedgerPage() {
   const { data: claims, isLoading } = useClaimLedger(50);
 
   return (
-    <div className="mx-auto max-w-5xl px-5 py-12 space-y-6">
+    <div className="max-w-5xl px-6 lg:px-12 py-12 space-y-6">
       <div className="text-center max-w-xl mx-auto">
         <div className="eyebrow mb-1">Public register</div>
         <h1 className="display text-4xl mb-3">The ledger</h1>

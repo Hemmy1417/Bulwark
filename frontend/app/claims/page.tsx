@@ -32,7 +32,7 @@ export default function MyClaimsPage() {
   const { data: claims, isLoading } = useMyClaims();
 
   return (
-    <div className="mx-auto max-w-5xl px-5 py-12 space-y-6">
+    <div className="max-w-5xl px-6 lg:px-12 py-12 space-y-6">
       <div>
         <div className="eyebrow mb-1">Adjudication history</div>
         <h1 className="display text-4xl">Claims of record</h1>

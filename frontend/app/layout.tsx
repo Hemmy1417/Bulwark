@@ -1,8 +1,8 @@
 import type { Metadata, Viewport } from "next";
-import { Inter, EB_Garamond, JetBrains_Mono } from "next/font/google";
+import { Inter, Instrument_Serif, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import { Providers } from "./providers";
-import { Nav } from "@/components/Nav";
+import { Masthead } from "@/components/Masthead";
 import { NetworkBanner } from "@/components/NetworkBanner";
 import { LiveBackdrop } from "@/components/LiveBackdrop";
 import { CONTRACT_ADDRESS, explorerAddressUrl } from "@/lib/config";
@@ -13,9 +13,11 @@ const inter = Inter({
   display: "swap",
 });
 
-const garamond = EB_Garamond({
+// Instrument Serif — dramatic high-contrast display; the broadsheet masthead.
+const garamond = Instrument_Serif({
   subsets: ["latin"],
-  weight: ["400", "500", "600"],
+  weight: ["400"],
+  style: ["normal", "italic"],
   variable: "--font-garamond",
   display: "swap",
 });
@@ -46,28 +48,30 @@ export default function RootLayout({
 }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="en" className={`${inter.variable} ${garamond.variable} ${mono.variable}`}>
-      <body className="min-h-screen flex flex-col">
+      <body className="min-h-screen">
         <LiveBackdrop />
         <Providers>
-          <Nav />
-          <NetworkBanner />
-          <main className="flex-1 relative">{children}</main>
-          <footer className="mt-16 border-t border-hairline">
-            <div className="mx-auto max-w-6xl px-5 py-6 flex flex-wrap items-center justify-between gap-3 text-xs">
-              <span className="eyebrow">Sealed on GenLayer · Studionet</span>
-              <span className="text-ivory-soft/40">
-                AI adjudication with public evidence · payouts in GEN ·{" "}
-                <a
-                  href={explorerAddressUrl(CONTRACT_ADDRESS)}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="underline hover:text-ivory"
-                >
-                  Verify on explorer ↗
-                </a>
-              </span>
-            </div>
-          </footer>
+          <Masthead />
+          <div className="lg:ml-[340px] min-h-screen flex flex-col">
+            <NetworkBanner />
+            <main className="flex-1 relative">{children}</main>
+            <footer className="mt-16 border-t border-hairline">
+              <div className="px-6 lg:px-12 py-6 flex flex-wrap items-center justify-between gap-3 text-xs">
+                <span className="eyebrow">Sealed on GenLayer · Studionet</span>
+                <span className="text-ivory-soft/40">
+                  AI adjudication with public evidence · payouts in GEN ·{" "}
+                  <a
+                    href={explorerAddressUrl(CONTRACT_ADDRESS)}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="underline hover:text-ivory"
+                  >
+                    Verify on explorer ↗
+                  </a>
+                </span>
+              </div>
+            </footer>
+          </div>
         </Providers>
       </body>
     </html>
