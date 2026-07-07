@@ -29,6 +29,18 @@ CAUSE_NOT_SLASHED  = "NOT_SLASHED"   # not covered — no slashing found in the 
 COVERED_CAUSES     = {CAUSE_BUG, CAUSE_UNAVOIDABLE}
 
 
+# Empty EVM interface: paying a wallet is an external message through the
+# chain layer (executed by the IC's ghost contract), NOT a GenVM call —
+# gl.get_contract_at(...).emit_transfer at an EOA errors at finalization
+# and the value is stranded. Proven empirically on Curia round 1.
+@gl.evm.contract_interface
+class _Payee:
+    class View:
+        pass
+    class Write:
+        pass
+
+
 class Bulwark(gl.Contract):
     """
     Bulwark — AI-arbitrated validator slashing insurance on GenLayer.
@@ -450,8 +462,7 @@ Respond ONLY with this JSON (no markdown fence, no prose):
             else:
                 self.reserve_wei = u256(int(self.reserve_wei) - payout)
                 self.total_payouts_wei = u256(int(self.total_payouts_wei) + payout)
-                gl.get_contract_at(Address(claimant)).emit_transfer(
-                    value=u256(payout),
+                _Payee(Address(claimant)).emit_transfer(value=u256(payout),
                     on="finalized",
                 )
                 claim["status"] = "PAID"
@@ -476,8 +487,7 @@ Respond ONLY with this JSON (no markdown fence, no prose):
 
         self.reserve_wei = u256(int(self.reserve_wei) - payout)
         self.total_payouts_wei = u256(int(self.total_payouts_wei) + payout)
-        gl.get_contract_at(Address(claim["claimant"])).emit_transfer(
-            value=u256(payout),
+        _Payee(Address(claim["claimant"])).emit_transfer(value=u256(payout),
             on="finalized",
         )
         claim["status"] = "PAID"

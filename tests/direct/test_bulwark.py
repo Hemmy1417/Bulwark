@@ -68,9 +68,26 @@ class _Public:
     write = _PublicWriteDeco()
 
 
+_TRANSFER_LOG = []
+
+
+class _Evm:
+    @staticmethod
+    def contract_interface(cls):
+        class _Proxy:
+            def __init__(self, addr):
+                self._addr = str(addr)
+
+            def emit_transfer(self, value, on=None):
+                _TRANSFER_LOG.append((int(value), on))
+        return _Proxy
+
+
 class _GL:
     class Contract:
         pass
+
+    evm = _Evm()
 
     public = _Public()
     message = _Vm.message
@@ -288,8 +305,12 @@ class _FakeEmit:
 
 
 def _install_fake_transfers(module):
-    """Route emit_transfer through a recorder so payouts can be asserted."""
+    """Route emit_transfer through a recorder so payouts can be asserted.
+    Payouts now flow through the _Payee EVM interface, which records into
+    the module-global _TRANSFER_LOG; expose it via the same recorder API."""
+    _TRANSFER_LOG.clear()
     recorder = _FakeEmit()
+    recorder.transfers = _TRANSFER_LOG
     module.gl.get_contract_at = lambda addr: recorder
     return recorder
 
