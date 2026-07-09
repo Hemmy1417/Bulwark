@@ -88,13 +88,17 @@ export function useClaimLedger(limit = 50) {
   });
 }
 
-export function usePreviewPremium(coverageWei: bigint | null, durationDays: number | null) {
+export function usePreviewPremium(
+  coverageWei: bigint | null, durationDays: number | null,
+  chainLabel: string = "ethereum",
+) {
   const contract = useBulwarkContract();
+  const { address } = useWallet();
   return useQuery<PremiumQuote | null, Error>({
-    queryKey: ["previewPremium", coverageWei?.toString() ?? "", durationDays ?? 0],
+    queryKey: ["previewPremium", coverageWei?.toString() ?? "", durationDays ?? 0, chainLabel, address ?? ""],
     queryFn: () => {
       if (!contract || !coverageWei || !durationDays) return Promise.resolve(null);
-      return contract.previewPremium(coverageWei, durationDays);
+      return contract.previewPremium(coverageWei, durationDays, chainLabel, address ?? "");
     },
     refetchOnWindowFocus: false,
     staleTime: 10000,

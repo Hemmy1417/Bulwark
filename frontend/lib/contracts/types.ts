@@ -67,7 +67,14 @@ export interface ProtocolParams {
 export interface PremiumQuote {
   coverage_wei: string;
   duration_days: number;
-  rate_bps: number;
+  base_bps: number;
+  chain_risk_bps: number;
+  chain_adjusted_bps: number;
+  record_loadings: number;
+  record_bps: number;
+  coverage_load_bps: number;
+  experience_bps: number;
+  effective_bps: number;
   premium_wei: string;
 }
 

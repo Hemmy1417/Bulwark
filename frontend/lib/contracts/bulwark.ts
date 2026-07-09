@@ -129,15 +129,25 @@ class Bulwark {
     } as ProtocolParams;
   }
 
-  async previewPremium(coverageWei: bigint, durationDays: number): Promise<PremiumQuote | null> {
-    const raw = await this.safeRead("preview_premium", [coverageWei, durationDays]);
+  async previewPremium(
+    coverageWei: bigint, durationDays: number,
+    chainLabel: string = "ethereum", holder: string = "",
+  ): Promise<PremiumQuote | null> {
+    const raw = await this.safeRead("preview_premium", [coverageWei, durationDays, chainLabel, holder]);
     if (!raw) return null;
     const q = this.toObj(raw);
     return {
-      coverage_wei:  String(q.coverage_wei ?? "0"),
-      duration_days: Number(q.duration_days ?? durationDays),
-      rate_bps:      Number(q.rate_bps ?? 0),
-      premium_wei:   String(q.premium_wei ?? "0"),
+      coverage_wei:       String(q.coverage_wei ?? "0"),
+      duration_days:      Number(q.duration_days ?? durationDays),
+      base_bps:           Number(q.base_bps ?? 0),
+      chain_risk_bps:     Number(q.chain_risk_bps ?? 10000),
+      chain_adjusted_bps: Number(q.chain_adjusted_bps ?? 0),
+      record_loadings:    Number(q.record_loadings ?? 0),
+      record_bps:         Number(q.record_bps ?? 0),
+      coverage_load_bps:  Number(q.coverage_load_bps ?? 0),
+      experience_bps:     Number(q.experience_bps ?? 0),
+      effective_bps:      Number(q.effective_bps ?? 0),
+      premium_wei:        String(q.premium_wei ?? "0"),
     };
   }
 

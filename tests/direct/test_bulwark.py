@@ -695,3 +695,50 @@ def test_appeal_only_by_claimant(module, contract):
     _as(module, BOB, value=0)
     with pytest.raises(module.gl.vm.UserError, match="Only the claimant"):
         contract.appeal_claim(claim["claim_id"], ["https://example.com/x"])
+
+
+# ── Risk-tiered premiums ─────────────────────────────────────────────────────
+
+def test_premium_chain_risk_multiplier(contract):
+    cov = 1 * 10 ** 18
+    eth = contract.preview_premium(cov, 30, "ethereum", "")
+    cosmos = contract.preview_premium(cov, 30, "cosmos:cosmoshub-4", "")
+    unknown = contract.preview_premium(cov, 30, "dogechain", "")
+    # base 500bps × chain multiplier
+    assert eth["effective_bps"] == 500                 # 1.00x
+    assert cosmos["effective_bps"] == 500 * 13000 // 10000   # 1.30x = 650
+    assert unknown["effective_bps"] == 500 * 15000 // 10000  # 1.50x = 750
+    assert int(cosmos["premium_wei"]) > int(eth["premium_wei"])
+
+
+def test_premium_large_coverage_loading(contract):
+    small = contract.preview_premium(1 * 10 ** 18, 30, "ethereum", "")
+    large = contract.preview_premium(5 * 10 ** 18, 30, "ethereum", "")
+    assert small["coverage_load_bps"] == 0
+    assert large["coverage_load_bps"] == 150          # +1.5% at/above 5 GEN
+
+
+def test_premium_holder_record_loading(module, contract):
+    _install_fake_transfers(module)
+    policy = _buy_active_policy(module, contract)      # ALICE, ethereum
+    _prime(module, slashed=True, cause="BUG")          # covered claim
+    _as(module, ALICE, value=0)
+    contract.file_claim(policy["policy_id"], ["https://gist.github.com/x"])
+    # ALICE now has one covered claim on record → +200 bps
+    q = contract.preview_premium(1 * 10 ** 18, 30, "ethereum", ALICE)
+    clean = contract.preview_premium(1 * 10 ** 18, 30, "ethereum", BOB)
+    assert q["record_loadings"] == 1 and q["record_bps"] == 200
+    assert clean["record_bps"] == 0
+    # holding chain/experience constant, ALICE's record costs exactly +200 bps
+    assert q["effective_bps"] - clean["effective_bps"] == 200
+
+
+def test_premium_experience_rating(module, contract):
+    # Seed a hot loss ratio: small premiums, large payout → surcharge kicks in.
+    _install_fake_transfers(module)
+    _buy_active_policy(module, contract)               # premiums in
+    _prime(module, slashed=True, cause="BUG")
+    _as(module, ALICE, value=0)
+    contract.file_claim("1", ["https://gist.github.com/x"])   # big payout vs premiums
+    params = contract.get_protocol_params()
+    assert params["experience_bps"] > 0                # pool ran hot → everyone pays a bit more

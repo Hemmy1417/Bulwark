@@ -42,6 +42,7 @@ export default function NewPolicyPage() {
   const { data: quote, isFetching: quoting } = usePreviewPremium(
     coverageWei > BigInt(0) ? coverageWei : null,
     duration,
+    chain,
   );
 
   const reserveWei = params?.reserve_wei ? BigInt(params.reserve_wei) : BigInt(0);
@@ -150,23 +151,30 @@ export default function NewPolicyPage() {
 
         <div className="hairline" />
 
-        <div className="grid grid-cols-2 gap-4 text-sm">
-          <div>
-            <div className="eyebrow mb-1">Rate</div>
-            <div className="mono text-gold-bright">
-              {quote ? `${(quote.rate_bps / 100).toFixed(1)}%` : "—"}
+        {/* Risk-priced quote — every component itemised, straight from the contract */}
+        <div>
+          <div className="eyebrow mb-2">Risk-priced quote</div>
+          {quoting ? (
+            <div className="text-sm text-ivory-soft/60"><Loader2 className="w-4 h-4 animate-spin inline" /> pricing…</div>
+          ) : quote ? (
+            <div className="rounded-sm overflow-hidden text-sm" style={{ border: "1px solid var(--hairline)" }}>
+              <RateRow label={`Base rate (${duration}d)`} bps={quote.base_bps} />
+              <RateRow label="Chain risk" mult={quote.chain_risk_bps} note={chain} />
+              {quote.record_bps > 0 && <RateRow label={`Your claim record (${quote.record_loadings})`} bps={quote.record_bps} warn />}
+              {quote.coverage_load_bps > 0 && <RateRow label="Large-policy load" bps={quote.coverage_load_bps} warn />}
+              {quote.experience_bps > 0 && <RateRow label="Pool loss experience" bps={quote.experience_bps} warn />}
+              <div className="flex items-center justify-between px-3 py-2.5" style={{ background: "rgba(230,199,122,0.08)" }}>
+                <span className="text-ivory">Effective rate</span>
+                <span className="mono text-gold-bright">{(quote.effective_bps / 100).toFixed(2)}%</span>
+              </div>
+              <div className="flex items-center justify-between px-3 py-2.5" style={{ background: "rgba(230,199,122,0.14)" }}>
+                <span className="text-ivory font-medium">Premium due</span>
+                <span className="mono text-gold-bright font-medium">{formatGen(quote.premium_wei)} GEN</span>
+              </div>
             </div>
-          </div>
-          <div>
-            <div className="eyebrow mb-1">Premium due</div>
-            <div className="mono text-gold-bright">
-              {quoting ? (
-                <Loader2 className="w-4 h-4 animate-spin inline" />
-              ) : quote ? (
-                `${formatGen(quote.premium_wei)} GEN`
-              ) : "—"}
-            </div>
-          </div>
+          ) : (
+            <div className="text-sm text-ivory-soft/50">Enter a coverage amount to see your quote.</div>
+          )}
         </div>
 
         {reserveShort && coverageWei > BigInt(0) && (
@@ -219,6 +227,18 @@ function Field({ label, hint, children }: { label: string; hint?: string; childr
       <label className="block eyebrow mb-1.5">{label}</label>
       {children}
       {hint && <p className="text-xs text-ivory-soft/50 mt-1.5">{hint}</p>}
+    </div>
+  );
+}
+
+function RateRow({ label, bps, mult, note, warn }: { label: string; bps?: number; mult?: number; note?: string; warn?: boolean }) {
+  const value = mult !== undefined ? `×${(mult / 10000).toFixed(2)}` : `+${((bps ?? 0) / 100).toFixed(2)}%`;
+  return (
+    <div className="flex items-center justify-between px-3 py-2" style={{ borderBottom: "1px solid var(--hairline)" }}>
+      <span className="text-ivory-soft/80">
+        {label}{note ? <span className="text-ivory-soft/40 mono text-xs"> · {note}</span> : null}
+      </span>
+      <span className="mono" style={{ color: warn ? "var(--danger)" : "var(--ivory)" }}>{value}</span>
     </div>
   );
 }

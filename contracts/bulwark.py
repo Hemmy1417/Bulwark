@@ -21,6 +21,26 @@ DURATION_RATES_BPS = {
 }
 ALLOWED_DURATIONS = (7, 30, 90)
 
+# ── Risk-based pricing ────────────────────────────────────────────────────────
+# The base duration rate is multiplied by a per-chain risk factor, then loaded
+# for the protocol's own loss experience, the buyer's claim record, and policy
+# size. Every component is transparent and returned by preview_premium.
+
+# Per-chain risk multiplier (bps; 10000 = 1.00x). Chains with thinner slashing
+# history / higher observed incident rates cost more per GEN of exposure.
+CHAIN_RISK_BPS = {
+    "ethereum": 10000,   # 1.00x — deep, well-instrumented slashing data
+    "cosmos":   13000,   # 1.30x — active slashing, more operator-error events
+}
+DEFAULT_CHAIN_RISK_BPS = 15000        # 1.50x — unknown chain, price defensively
+
+RECORD_LOADING_BPS       = 200        # +2% effective rate per prior COVERED claim by the buyer
+MAX_RECORD_LOADINGS      = 5          # capped so a bad record can't price to infinity
+COVERAGE_LOADING_WEI     = 5 * (10 ** 18)   # policies at/above 5 GEN carry a concentration load
+COVERAGE_LOADING_BPS     = 150        # +1.5% for large single-validator exposure
+EXPERIENCE_FLOOR_BPS     = 6000       # loss ratio below 60% adds nothing
+EXPERIENCE_CAP_BPS       = 800        # experience surcharge capped at +8%
+
 # Cause buckets returned by the AI. Anything else is treated as REJECTED for safety.
 CAUSE_BUG          = "BUG"           # covered — client-software fault
 CAUSE_UNAVOIDABLE  = "UNAVOIDABLE"   # covered — chain-level / network issue outside operator control
@@ -103,13 +123,66 @@ class Bulwark(gl.Contract):
         # tracking browser-side first-seen timestamps per policy_id.
         return int(self.policy_counter) + int(self.claim_counter)
 
-    def _quote_premium_wei(self, coverage_wei: int, duration_days: int) -> int:
+    def _chain_risk_bps(self, chain_label: str) -> int:
+        c = (chain_label or "").strip().lower()
+        for prefix, bps in CHAIN_RISK_BPS.items():
+            if c.startswith(prefix):
+                return bps
+        return DEFAULT_CHAIN_RISK_BPS
+
+    def _holder_covered_claims(self, holder: str) -> int:
+        """How many prior claims by this buyer were ruled COVERED — their record."""
+        if not holder:
+            return 0
+        n = 0
+        for cid in self._load_index(self.claims_by_owner, holder):
+            raw = self.claims.get(cid)
+            if raw and json.loads(raw).get("covered"):
+                n += 1
+        return n
+
+    def _experience_bps(self) -> int:
+        """Experience rating: surcharge when the pool's loss ratio runs hot."""
+        prem = int(self.total_premiums_wei)
+        if prem == 0:
+            return 0
+        loss_ratio_bps = (int(self.total_payouts_wei) * 10_000) // prem
+        if loss_ratio_bps <= EXPERIENCE_FLOOR_BPS:
+            return 0
+        return min((loss_ratio_bps - EXPERIENCE_FLOOR_BPS) // 8, EXPERIENCE_CAP_BPS)
+
+    def _premium_breakdown(self, coverage_wei: int, duration_days: int,
+                           chain_label: str, holder: str) -> dict:
         if duration_days not in DURATION_RATES_BPS:
-            raise gl.vm.UserError(
-                f"Duration must be one of {ALLOWED_DURATIONS} days"
-            )
-        rate_bps = DURATION_RATES_BPS[duration_days]
-        return (int(coverage_wei) * rate_bps) // 10_000
+            raise gl.vm.UserError(f"Duration must be one of {ALLOWED_DURATIONS} days")
+        coverage = int(coverage_wei)
+        base_bps = DURATION_RATES_BPS[duration_days]
+        chain_bps = self._chain_risk_bps(chain_label)
+        # Base rate scaled by the chain risk multiplier.
+        chain_adjusted_bps = (base_bps * chain_bps) // 10_000
+        loadings = min(self._holder_covered_claims(holder), MAX_RECORD_LOADINGS)
+        record_bps = loadings * RECORD_LOADING_BPS
+        coverage_load_bps = COVERAGE_LOADING_BPS if coverage >= COVERAGE_LOADING_WEI else 0
+        experience_bps = self._experience_bps()
+        effective_bps = chain_adjusted_bps + record_bps + coverage_load_bps + experience_bps
+        premium = (coverage * effective_bps) // 10_000
+        return {
+            "coverage_wei":       str(coverage),
+            "duration_days":      duration_days,
+            "base_bps":           base_bps,
+            "chain_risk_bps":     chain_bps,
+            "chain_adjusted_bps": chain_adjusted_bps,
+            "record_loadings":    loadings,
+            "record_bps":         record_bps,
+            "coverage_load_bps":  coverage_load_bps,
+            "experience_bps":     experience_bps,
+            "effective_bps":      effective_bps,
+            "premium_wei":        str(premium),
+        }
+
+    def _quote_premium_wei(self, coverage_wei: int, duration_days: int,
+                           chain_label: str, holder: str) -> int:
+        return int(self._premium_breakdown(coverage_wei, duration_days, chain_label, holder)["premium_wei"])
 
     def _canonical_sources(self, validator_identifier: str, chain_label: str) -> list:
         """
@@ -181,18 +254,19 @@ class Bulwark(gl.Contract):
             "total_policies":      int(self.policy_counter),
             "total_claims":        int(self.claim_counter),
             "duration_rates_bps":  {str(k): v for k, v in DURATION_RATES_BPS.items()},
+            "chain_risk_bps":      {str(k): v for k, v in CHAIN_RISK_BPS.items()},
+            "default_chain_risk_bps": DEFAULT_CHAIN_RISK_BPS,
+            "record_loading_bps":  RECORD_LOADING_BPS,
+            "coverage_load_bps":   COVERAGE_LOADING_BPS,
+            "experience_bps":      self._experience_bps(),
         }
 
     @gl.public.view
-    def preview_premium(self, coverage_wei: int, duration_days: int) -> dict:
-        premium = self._quote_premium_wei(coverage_wei, duration_days)
-        rate = DURATION_RATES_BPS[duration_days]
-        return {
-            "coverage_wei":  str(int(coverage_wei)),
-            "duration_days": int(duration_days),
-            "rate_bps":      rate,
-            "premium_wei":   str(premium),
-        }
+    def preview_premium(self, coverage_wei: int, duration_days: int,
+                        chain_label: str = "ethereum", holder: str = "") -> dict:
+        """Full, transparent risk-priced quote: base × chain × experience ×
+        the holder's record × policy size, with every component itemised."""
+        return self._premium_breakdown(coverage_wei, duration_days, chain_label, holder)
 
     @gl.public.view
     def get_policy(self, policy_id: str) -> dict:
@@ -281,7 +355,7 @@ class Bulwark(gl.Contract):
         if not chain_label.strip():
             raise gl.vm.UserError("chain_label required")
 
-        premium = self._quote_premium_wei(coverage, duration)
+        premium = self._quote_premium_wei(coverage, duration, chain_label, buyer)
         sent = int(gl.message.value)
         if sent != premium:
             raise gl.vm.UserError(
