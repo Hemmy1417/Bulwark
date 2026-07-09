@@ -197,6 +197,45 @@ export function useFileClaim() {
   };
 }
 
+export function useAppealClaim() {
+  const contract = useBulwarkContract();
+  const { address } = useWallet();
+  const queryClient = useQueryClient();
+  const [isAppealing, setIsAppealing] = useState(false);
+
+  const mutation = useMutation({
+    mutationFn: async (args: { claimId: string; additionalCauseUrls: string[] }) => {
+      if (!contract) throw new Error("Contract not configured.");
+      if (!address) throw new Error("Wallet not connected.");
+      setIsAppealing(true);
+      const { receipt, txHash } = await contract.appealClaim(args);
+      return { receipt, txHash, payload: contract.parseReturnPayload(receipt) };
+    },
+    onSuccess: (data: any) => {
+      queryClient.invalidateQueries();
+      setIsAppealing(false);
+      const p = data?.payload;
+      if (p?.covered) {
+        success("Appeal upheld — claim overturned!", {
+          description: `Re-ruled ${p.ai_cause}. Payout: ${p.payout_wei} wei.`,
+          explorerUrl: explorerTxUrl(data?.txHash),
+        });
+      } else {
+        success("Rejection upheld on appeal", {
+          description: `Re-ruled ${p?.ai_cause ?? "unknown"} — still not covered. This claim is now final.`,
+          explorerUrl: explorerTxUrl(data?.txHash),
+        });
+      }
+    },
+    onError: (err: any) => {
+      setIsAppealing(false);
+      error("Failed to appeal", { description: err?.message || "Please try again." });
+    },
+  });
+
+  return { ...mutation, isAppealing, appealClaim: mutation.mutate };
+}
+
 export function useOwnerSeedReserve() {
   const contract = useBulwarkContract();
   const queryClient = useQueryClient();

@@ -216,6 +216,25 @@ class Bulwark {
     }
   }
 
+  async appealClaim(args: {
+    claimId: string;
+    additionalCauseUrls: string[];
+  }): Promise<{ receipt: TransactionReceipt; txHash: string }> {
+    try {
+      const txHash = await this.client.writeContract({
+        address: this.contractAddress,
+        functionName: "appeal_claim",
+        args: [args.claimId, args.additionalCauseUrls],
+        value: BigInt(0),
+      });
+      const receipt = await this.waitAndVerify(txHash);
+      return { receipt, txHash: String(txHash) };
+    } catch (err) {
+      console.error("[Bulwark] appealClaim failed:", err);
+      throw err instanceof Error ? err : new Error("Failed to appeal claim");
+    }
+  }
+
   async ownerSeedReserve(amountWei: bigint): Promise<{ receipt: TransactionReceipt; txHash: string }> {
     try {
       const txHash = await this.client.writeContract({

@@ -28,6 +28,8 @@ CAUSE_NEGLIGENCE   = "NEGLIGENCE"    # not covered — operator's fault (misconf
 CAUSE_NOT_SLASHED  = "NOT_SLASHED"   # not covered — no slashing found in the evidence
 COVERED_CAUSES     = {CAUSE_BUG, CAUSE_UNAVOIDABLE}
 
+MAX_APPEALS        = 1               # one appeal per claim — must bring new evidence
+
 
 # Empty EVM interface: paying a wallet is an external message through the
 # chain layer (executed by the IC's ghost contract), NOT a GenVM call —
@@ -359,9 +361,77 @@ class Bulwark(gl.Contract):
                 "slashing status cannot be independently verified"
             )
 
-        cause_urls = [u.strip() for u in (cause_evidence_urls or []) if u and u.strip()]
-        all_urls = pinned + cause_urls[:3]   # cap narrative URLs at 3
+        cause_urls = [u.strip() for u in (cause_evidence_urls or []) if u and u.strip()][:3]
+        all_urls = pinned + cause_urls
 
+        ruling = self._run_adjudication(policy, pinned, cause_urls)
+        cause = ruling["cause"]
+        slashed = ruling["slashed"]
+        confidence = ruling["confidence"]
+        summary = ruling["summary"]
+
+        covered = slashed and cause in COVERED_CAUSES
+        coverage = int(policy["coverage_wei"])
+        payout = coverage if covered else 0
+
+        self.claim_counter = u256(int(self.claim_counter) + 1)
+        claim_id = str(int(self.claim_counter))
+        now = self._now()
+        snapshot = {
+            "round": "initial", "cause": cause, "slashed": slashed,
+            "confidence": confidence, "covered": covered, "summary": summary, "at_block": now,
+        }
+        claim = {
+            "claim_id":       claim_id,
+            "policy_id":      policy_id,
+            "claimant":       claimant,
+            "pinned_sources": pinned,          # contract-derived, verifiable
+            "cause_urls":     cause_urls,       # claimant-supplied narrative
+            "evidence_urls":  all_urls,
+            "ai_slashed":     slashed,
+            "ai_cause":       cause,
+            "ai_confidence":  confidence,
+            "ai_summary":     summary,
+            "covered":        covered,
+            "payout_wei":     str(payout),
+            "status":         "APPROVED" if covered else "REJECTED",
+            "appeal_count":   0,
+            "history":        [snapshot],
+            "filed_at_block": now,
+        }
+        self._save_claim(claim)
+        self._append_index(self.claims_by_owner, claimant, claim_id)
+
+        policy["claim_id"] = claim_id
+        policy["status"] = "CLAIMED" if covered else "REJECTED"
+        self._save_policy(policy)
+        self.active_policy_count = u256(max(0, int(self.active_policy_count) - 1))
+
+        if covered:
+            self._settle(claim, claimant, payout)
+        return claim
+
+    # ── adjudication + settlement helpers (shared by file_claim / appeal) ────
+
+    def _settle(self, claim: dict, claimant: str, payout: int) -> None:
+        """Pay a covered claim if the reserve can fund it, else flag PENDING."""
+        if int(self.reserve_wei) < payout:
+            claim["status"] = "PENDING_PAYOUT"
+            self._save_claim(claim)
+        else:
+            self.reserve_wei = u256(int(self.reserve_wei) - payout)
+            self.total_payouts_wei = u256(int(self.total_payouts_wei) + payout)
+            _Payee(Address(claimant)).emit_transfer(value=u256(payout), on="finalized")
+            claim["status"] = "PAID"
+            self._save_claim(claim)
+
+    def _run_adjudication(self, policy: dict, pinned: list, cause_urls: list) -> dict:
+        """
+        The shared AI adjudication: fetch the contract-pinned status sources
+        and any narrative cause URLs, rule the slash cause under comparative
+        consensus, and return the parsed ruling. Used for both the initial
+        claim and an appeal (re-run with additional evidence).
+        """
         def rule_on_claim() -> typing.Any:
             snippets = []
             pinned_labels = [
@@ -370,7 +440,7 @@ class Bulwark(gl.Contract):
             ]
             for label, url in pinned_labels + [
                 (f"CAUSE EVIDENCE #{i+1} (claimant-supplied, narrative only)", u)
-                for i, u in enumerate(cause_urls[:3])
+                for i, u in enumerate(cause_urls[:5])
             ]:
                 # A single blocked/failed URL must NOT kill the consensus
                 # round — beaconcha.in/rated.network are fine but many
@@ -455,59 +525,79 @@ Respond ONLY with this JSON (no markdown fence, no prose):
                 text = text[4:]
         ruling = json.loads(text.strip())
 
-        cause = str(ruling.get("cause", "NOT_SLASHED")).upper()
-        slashed = bool(ruling.get("slashed", False))
-        confidence = int(ruling.get("confidence", 0))
-        summary = str(ruling.get("summary", ""))[:1000]
+        return {
+            "cause":      str(ruling.get("cause", "NOT_SLASHED")).upper(),
+            "slashed":    bool(ruling.get("slashed", False)),
+            "confidence": int(ruling.get("confidence", 0)),
+            "summary":    str(ruling.get("summary", ""))[:1000],
+        }
 
+    # ────────────────────────────────────────────────────────────────────────
+    # APPEAL — re-adjudicate a rejected claim with additional evidence
+    # ────────────────────────────────────────────────────────────────────────
+
+    @gl.public.write
+    def appeal_claim(self, claim_id: str, additional_cause_urls: list) -> dict:
+        """
+        Appeal a REJECTED claim. This is a fresh consensus round — in the
+        spirit of GenLayer's native appeals, a new (and typically larger)
+        validator set re-rules. To keep appeals principled rather than a
+        re-roll of LLM variance, an appeal MUST bring at least one new cause
+        URL and is capped at one per claim. The authoritative status sources
+        are unchanged (still contract-pinned); the new evidence can only
+        recategorise WHY a slashing happened (e.g. NEGLIGENCE -> BUG), never
+        manufacture a slashing the pinned sources don't show.
+        """
+        claimant = str(gl.message.sender_address)
+        claim = self._load_claim(claim_id)
+        policy = self._load_policy(claim["policy_id"])
+
+        if claim["claimant"] != claimant:
+            raise gl.vm.UserError("Only the claimant may appeal")
+        if claim["status"] != "REJECTED":
+            raise gl.vm.UserError(f"Only REJECTED claims can be appealed (status: {claim['status']})")
+        if int(claim.get("appeal_count", 0)) >= MAX_APPEALS:
+            raise gl.vm.UserError("This claim has already used its appeal")
+
+        new_urls = [u.strip() for u in (additional_cause_urls or []) if u and u.strip()]
+        if not new_urls:
+            raise gl.vm.UserError("An appeal must bring at least one new cause-evidence URL")
+
+        pinned = claim["pinned_sources"]
+        combined = (claim.get("cause_urls", []) + new_urls)[:5]
+
+        ruling = self._run_adjudication(policy, pinned, combined)
+        cause = ruling["cause"]
+        slashed = ruling["slashed"]
         covered = slashed and cause in COVERED_CAUSES
         coverage = int(policy["coverage_wei"])
         payout = coverage if covered else 0
-
-        # Persist claim
-        self.claim_counter = u256(int(self.claim_counter) + 1)
-        claim_id = str(int(self.claim_counter))
         now = self._now()
-        claim = {
-            "claim_id":       claim_id,
-            "policy_id":      policy_id,
-            "claimant":       claimant,
-            "pinned_sources": pinned,          # contract-derived, verifiable
-            "cause_urls":     cause_urls[:3],   # claimant-supplied narrative
-            "evidence_urls":  all_urls,
-            "ai_slashed":     slashed,
-            "ai_cause":       cause,
-            "ai_confidence":  confidence,
-            "ai_summary":     summary,
-            "covered":        covered,
-            "payout_wei":     str(payout),
-            "status":         "APPROVED" if covered else "REJECTED",
-            "filed_at_block": now,
-        }
-        self._save_claim(claim)
-        self._append_index(self.claims_by_owner, claimant, claim_id)
 
-        # Update policy
-        policy["claim_id"] = claim_id
-        policy["status"] = "CLAIMED" if covered else "REJECTED"
-        self._save_policy(policy)
-        self.active_policy_count = u256(max(0, int(self.active_policy_count) - 1))
+        claim["appeal_count"] = int(claim.get("appeal_count", 0)) + 1
+        claim["cause_urls"] = combined
+        claim["evidence_urls"] = pinned + combined
+        claim["ai_slashed"] = slashed
+        claim["ai_cause"] = cause
+        claim["ai_confidence"] = ruling["confidence"]
+        claim["ai_summary"] = ruling["summary"]
+        claim["covered"] = covered
+        claim["payout_wei"] = str(payout)
+        claim.setdefault("history", []).append({
+            "round": "appeal", "cause": cause, "slashed": slashed,
+            "confidence": ruling["confidence"], "covered": covered,
+            "summary": ruling["summary"], "at_block": now,
+        })
 
-        # Payout — only if covered AND reserve has capacity. If reserve is
-        # short we still record the claim as APPROVED but flag PENDING_PAYOUT
-        # so the owner can top up and settle later. Simpler than half-paying.
         if covered:
-            if int(self.reserve_wei) < payout:
-                claim["status"] = "PENDING_PAYOUT"
-                self._save_claim(claim)
-            else:
-                self.reserve_wei = u256(int(self.reserve_wei) - payout)
-                self.total_payouts_wei = u256(int(self.total_payouts_wei) + payout)
-                _Payee(Address(claimant)).emit_transfer(value=u256(payout),
-                    on="finalized",
-                )
-                claim["status"] = "PAID"
-                self._save_claim(claim)
+            policy["status"] = "CLAIMED"
+            self._save_policy(policy)
+            claim["status"] = "APPROVED"
+            self._save_claim(claim)
+            self._settle(claim, claimant, payout)   # overturned on appeal
+        else:
+            claim["status"] = "REJECTED"             # rejection upheld — final
+            self._save_claim(claim)
 
         return claim
 

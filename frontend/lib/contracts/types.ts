@@ -22,10 +22,22 @@ export interface Policy {
   claim_id: string | null;
 }
 
+export interface ClaimRuling {
+  round: string;
+  cause: CauseBucket;
+  slashed: boolean;
+  confidence: number;
+  covered: boolean;
+  summary: string;
+  at_block: number;
+}
+
 export interface Claim {
   claim_id: string;
   policy_id: string;
   claimant: string;
+  pinned_sources?: string[];
+  cause_urls?: string[];
   evidence_urls: string[];
   ai_slashed: boolean;
   ai_cause: CauseBucket;
@@ -34,6 +46,8 @@ export interface Claim {
   covered: boolean;
   payout_wei: string;
   status: ClaimStatus;
+  appeal_count?: number;
+  history?: ClaimRuling[];
   filed_at_block: number;
 }
 

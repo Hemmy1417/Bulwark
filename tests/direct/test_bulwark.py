@@ -83,11 +83,38 @@ class _Evm:
         return _Proxy
 
 
+class _NondetWeb:
+    @staticmethod
+    def render(url, mode="text"):
+        return f"[stub evidence fetched from {url}]"
+
+
+class _Nondet:
+    web = _NondetWeb()
+
+    @staticmethod
+    def exec_prompt(task):
+        return "unused-by-stub"
+
+
+class _EqPrinciple:
+    # Prime with the ruling JSON the adjudication should return.
+    canned = '{"slashed": false, "cause": "NOT_SLASHED", "confidence": 40, "summary": "stub"}'
+    last_input = None
+
+    @classmethod
+    def prompt_comparative(cls, fn, principle):
+        cls.last_input = fn()   # run the fetch loop so evidence assembly is exercised
+        return cls.canned
+
+
 class _GL:
     class Contract:
         pass
 
     evm = _Evm()
+    nondet = _Nondet()
+    eq_principle = _EqPrinciple
 
     public = _Public()
     message = _Vm.message
@@ -577,3 +604,94 @@ def test_get_claim_ledger_returns_reverse_chronological(module, contract):
 
     ledger = contract.get_claim_ledger(limit=10)
     assert [c["claim_id"] for c in ledger] == [c2, c1]
+
+
+# ── Appeal path ──────────────────────────────────────────────────────────────
+
+def _prime(module, slashed, cause, confidence=80):
+    import json as _json
+    module.gl.eq_principle.canned = _json.dumps({
+        "slashed": slashed, "cause": cause, "confidence": confidence, "summary": "stub ruling",
+    })
+
+
+def _buy_active_policy(module, contract, holder=ALICE, vid="123456", chain="ethereum"):
+    _as(module, OWNER, value=10 * 10 ** 18)
+    contract.owner_seed_reserve()
+    coverage = 1 * 10 ** 18
+    premium = coverage * 5 // 100
+    _as(module, holder, value=premium)
+    return contract.buy_policy(validator_identifier=vid, chain_label=chain,
+                               coverage_wei=coverage, duration_days=30)
+
+
+def test_file_claim_pins_sources_and_runs(module, contract):
+    _install_fake_transfers(module)
+    policy = _buy_active_policy(module, contract)
+    _prime(module, slashed=True, cause="BUG")
+    _as(module, ALICE, value=0)
+    claim = contract.file_claim(policy["policy_id"], ["https://gist.github.com/x/postmortem"])
+    # authoritative sources were derived by the contract, not supplied
+    assert claim["pinned_sources"] == [
+        "https://beaconscan.com/validator/123456",
+        "https://beaconcha.in/validator/123456",
+    ]
+    assert claim["status"] == "PAID" and claim["covered"] is True
+    assert claim["appeal_count"] == 0 and len(claim["history"]) == 1
+
+
+def test_appeal_overturns_rejected_claim(module, contract):
+    recorder = _install_fake_transfers(module)
+    policy = _buy_active_policy(module, contract)
+    # first ruling: slashed but NEGLIGENCE (not covered) -> REJECTED
+    _prime(module, slashed=True, cause="NEGLIGENCE")
+    _as(module, ALICE, value=0)
+    claim = contract.file_claim(policy["policy_id"], ["https://example.com/first"])
+    assert claim["status"] == "REJECTED"
+    # appeal with new evidence, re-ruled as BUG (covered) -> overturned + paid
+    _prime(module, slashed=True, cause="BUG")
+    _as(module, ALICE, value=0)
+    out = contract.appeal_claim(claim["claim_id"], ["https://gist.github.com/client-release-notes"])
+    assert out["status"] == "PAID"
+    assert out["covered"] is True
+    assert out["appeal_count"] == 1
+    assert [h["round"] for h in out["history"]] == ["initial", "appeal"]
+    assert recorder.transfers[-1][0] == int(policy["coverage_wei"])
+
+
+def test_appeal_requires_new_evidence(module, contract):
+    _install_fake_transfers(module)
+    policy = _buy_active_policy(module, contract)
+    _prime(module, slashed=True, cause="NEGLIGENCE")
+    _as(module, ALICE, value=0)
+    claim = contract.file_claim(policy["policy_id"], ["https://example.com/first"])
+    _as(module, ALICE, value=0)
+    with pytest.raises(module.gl.vm.UserError, match="new cause-evidence"):
+        contract.appeal_claim(claim["claim_id"], [])
+
+
+def test_appeal_capped_at_one(module, contract):
+    _install_fake_transfers(module)
+    policy = _buy_active_policy(module, contract)
+    _prime(module, slashed=True, cause="NEGLIGENCE")
+    _as(module, ALICE, value=0)
+    claim = contract.file_claim(policy["policy_id"], ["https://example.com/first"])
+    # first appeal, still uncovered -> rejection upheld
+    _prime(module, slashed=True, cause="NEGLIGENCE")
+    _as(module, ALICE, value=0)
+    contract.appeal_claim(claim["claim_id"], ["https://example.com/second"])
+    # second appeal blocked
+    _as(module, ALICE, value=0)
+    with pytest.raises(module.gl.vm.UserError, match="already used its appeal"):
+        contract.appeal_claim(claim["claim_id"], ["https://example.com/third"])
+
+
+def test_appeal_only_by_claimant(module, contract):
+    _install_fake_transfers(module)
+    policy = _buy_active_policy(module, contract)
+    _prime(module, slashed=True, cause="NEGLIGENCE")
+    _as(module, ALICE, value=0)
+    claim = contract.file_claim(policy["policy_id"], ["https://example.com/first"])
+    _as(module, BOB, value=0)
+    with pytest.raises(module.gl.vm.UserError, match="Only the claimant"):
+        contract.appeal_claim(claim["claim_id"], ["https://example.com/x"])
