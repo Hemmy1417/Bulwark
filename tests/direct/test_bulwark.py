@@ -742,3 +742,53 @@ def test_premium_experience_rating(module, contract):
     contract.file_claim("1", ["https://gist.github.com/x"])   # big payout vs premiums
     params = contract.get_protocol_params()
     assert params["experience_bps"] > 0                # pool ran hot → everyone pays a bit more
+
+
+# ── Aggregate solvency accounting ────────────────────────────────────────────
+
+def test_outstanding_exposure_tracks_book(module, contract):
+    _install_fake_transfers(module)
+    # seed a modest reserve, then buy two policies
+    _as(module, OWNER, value=3 * 10 ** 18)
+    contract.owner_seed_reserve()
+    cov = 1 * 10 ** 18
+    prem = cov * 5 // 100
+    _as(module, ALICE, value=prem)
+    contract.buy_policy(validator_identifier="111", chain_label="ethereum", coverage_wei=cov, duration_days=30)
+    _as(module, BOB, value=prem)
+    contract.buy_policy(validator_identifier="222", chain_label="ethereum", coverage_wei=cov, duration_days=30)
+    p = contract.get_protocol_params()
+    assert int(p["outstanding_exposure_wei"]) == 2 * cov
+    # solvency ratio = reserve / exposure, in bps
+    assert p["solvency_ratio_bps"] == (int(p["reserve_wei"]) * 10000) // (2 * cov)
+
+
+def test_solvency_guard_blocks_overexposure(module, contract):
+    _install_fake_transfers(module)
+    # reserve exactly covers one 1-GEN policy (incl. its premium)
+    _as(module, OWNER, value=1 * 10 ** 18)
+    contract.owner_seed_reserve()
+    cov = 1 * 10 ** 18
+    prem = cov * 5 // 100
+    _as(module, ALICE, value=prem)
+    contract.buy_policy(validator_identifier="111", chain_label="ethereum", coverage_wei=cov, duration_days=30)
+    # a second 1-GEN policy would push exposure past the reserve -> blocked
+    _as(module, BOB, value=prem)
+    with pytest.raises(module.gl.vm.UserError, match="outstanding exposure"):
+        contract.buy_policy(validator_identifier="222", chain_label="ethereum", coverage_wei=cov, duration_days=30)
+
+
+def test_exposure_released_on_claim(module, contract):
+    _install_fake_transfers(module)
+    _as(module, OWNER, value=5 * 10 ** 18)
+    contract.owner_seed_reserve()
+    cov = 1 * 10 ** 18
+    prem = cov * 5 // 100
+    _as(module, ALICE, value=prem)
+    policy = contract.buy_policy(validator_identifier="111", chain_label="ethereum", coverage_wei=cov, duration_days=30)
+    assert int(contract.get_protocol_params()["outstanding_exposure_wei"]) == cov
+    # filing a claim takes the policy off the in-force book -> exposure released
+    _prime(module, slashed=False, cause="NOT_SLASHED")
+    _as(module, ALICE, value=0)
+    contract.file_claim(policy["policy_id"], ["https://example.com/x"])
+    assert int(contract.get_protocol_params()["outstanding_exposure_wei"]) == 0

@@ -56,12 +56,16 @@ export interface ProtocolParams {
   min_coverage_wei: string;
   max_coverage_wei: string;
   reserve_wei: string;
+  outstanding_exposure_wei?: string;
+  solvency_ratio_bps?: number;
   total_premiums_wei: string;
   total_payouts_wei: string;
   active_policy_count: number;
   total_policies: number;
   total_claims: number;
   duration_rates_bps: Record<string, number>;
+  chain_risk_bps?: Record<string, number>;
+  experience_bps?: number;
 }
 
 export interface PremiumQuote {

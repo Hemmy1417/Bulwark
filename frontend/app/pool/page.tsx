@@ -8,6 +8,7 @@ import { parseGen, formatGen } from "@/lib/utils";
 import { AddressDisplay } from "@/components/AddressDisplay";
 import { error as toastError } from "@/lib/toast";
 import { HowTo } from "@/components/HowTo";
+import type { ProtocolParams } from "@/lib/contracts/types";
 
 export default function PoolPage() {
   const { address } = useWallet();
@@ -68,6 +69,8 @@ export default function PoolPage() {
             <BigStat label="Payouts (lt)"     value={`${formatGen(params.total_payouts_wei)} GEN`}  hint="Paid lifetime" icon={Coins} />
             <BigStat label="Active policies"  value={String(params.active_policy_count)}            hint={`${params.total_policies} bound total`} icon={Landmark} />
           </div>
+
+          <SolvencyMeter params={params} />
 
           <div className="card p-6 space-y-4">
             <div className="eyebrow">Protocol parameters</div>
@@ -152,6 +155,41 @@ export default function PoolPage() {
           )}
         </>
       )}
+    </div>
+  );
+}
+
+function SolvencyMeter({ params }: { params: ProtocolParams }) {
+  const reserve = BigInt(params.reserve_wei || "0");
+  const exposure = BigInt(params.outstanding_exposure_wei || "0");
+  const ratioBps = params.solvency_ratio_bps ?? 0;
+  const noBook = exposure === BigInt(0);
+  // fill = reserve / exposure, clamped to 100% for the bar
+  const fillPct = noBook ? 100 : Math.min(100, ratioBps / 100);
+  const healthy = noBook || ratioBps >= 10000;
+  const color = healthy ? "var(--success)" : ratioBps >= 8000 ? "var(--gold-bright)" : "var(--danger)";
+  const label = noBook
+    ? "Fully funded — no exposure on the book"
+    : `${(ratioBps / 100).toFixed(0)}% funded`;
+
+  return (
+    <div className="card p-6 space-y-3">
+      <div className="flex items-center justify-between">
+        <div className="eyebrow">Reserve solvency</div>
+        <span className="mono text-sm" style={{ color }}>{label}</span>
+      </div>
+      <div className="h-3 rounded-full overflow-hidden" style={{ background: "rgba(255,255,255,0.05)" }}>
+        <div className="h-full rounded-full transition-all" style={{ width: `${fillPct}%`, background: color }} />
+      </div>
+      <div className="flex items-center justify-between text-xs text-ivory-soft/60">
+        <span>Reserve <span className="mono text-ivory">{formatGen(params.reserve_wei)} GEN</span></span>
+        <span>Outstanding exposure <span className="mono text-ivory">{formatGen(params.outstanding_exposure_wei ?? "0")} GEN</span></span>
+      </div>
+      <p className="text-xs text-ivory-soft/50 leading-relaxed">
+        The reserve must cover the <span className="text-ivory">total</span> coverage of every in-force policy — new
+        policies are refused on-chain if they'd push exposure past the reserve. A ratio at or above 100% means every
+        active policyholder could be paid out at once.
+      </p>
     </div>
   );
 }

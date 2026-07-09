@@ -122,10 +122,16 @@ class Bulwark {
     }
     return {
       ...p,
-      active_policy_count: Number(p.active_policy_count ?? 0),
-      total_policies:      Number(p.total_policies ?? 0),
-      total_claims:        Number(p.total_claims ?? 0),
-      duration_rates_bps:  rates,
+      reserve_wei:              String(p.reserve_wei ?? "0"),
+      outstanding_exposure_wei: String(p.outstanding_exposure_wei ?? "0"),
+      solvency_ratio_bps:       Number(p.solvency_ratio_bps ?? 0),
+      total_premiums_wei:       String(p.total_premiums_wei ?? "0"),
+      total_payouts_wei:        String(p.total_payouts_wei ?? "0"),
+      active_policy_count:      Number(p.active_policy_count ?? 0),
+      total_policies:           Number(p.total_policies ?? 0),
+      total_claims:             Number(p.total_claims ?? 0),
+      experience_bps:           Number(p.experience_bps ?? 0),
+      duration_rates_bps:       rates,
     } as ProtocolParams;
   }
 

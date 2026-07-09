@@ -93,6 +93,7 @@ class Bulwark(gl.Contract):
     total_premiums_wei: u256   # lifetime total
     total_payouts_wei:  u256   # lifetime total
     active_policy_count: u256
+    outstanding_exposure_wei: u256   # sum of coverage on all in-force policies
 
     # ── constructor ─────────────────────────────────────────────────────────
     def __init__(self, owner: Address):
@@ -107,6 +108,7 @@ class Bulwark(gl.Contract):
         self.total_premiums_wei = u256(0)
         self.total_payouts_wei  = u256(0)
         self.active_policy_count = u256(0)
+        self.outstanding_exposure_wei = u256(0)
 
     # ── internal helpers ────────────────────────────────────────────────────
 
@@ -248,6 +250,14 @@ class Bulwark(gl.Contract):
             "min_coverage_wei":    str(MIN_COVERAGE_WEI),
             "max_coverage_wei":    str(MAX_COVERAGE_WEI),
             "reserve_wei":         str(int(self.reserve_wei)),
+            "outstanding_exposure_wei": str(int(self.outstanding_exposure_wei)),
+            # Solvency ratio in bps: reserve / outstanding exposure. >=10000
+            # means fully funded; a fresh book with no exposure reads as fully
+            # solvent (returns 0 exposure -> ratio sentinel of 0 handled UI-side).
+            "solvency_ratio_bps":  (
+                (int(self.reserve_wei) * 10_000) // int(self.outstanding_exposure_wei)
+                if int(self.outstanding_exposure_wei) > 0 else 0
+            ),
             "total_premiums_wei":  str(int(self.total_premiums_wei)),
             "total_payouts_wei":   str(int(self.total_payouts_wei)),
             "active_policy_count": int(self.active_policy_count),
@@ -362,16 +372,16 @@ class Bulwark(gl.Contract):
                 f"Wrong premium: sent {sent} wei, quoted {premium} wei"
             )
 
-        # Reserve must be able to cover this new exposure — protects earlier
-        # policyholders from a run where premiums alone can't fund payouts.
-        # We accept the premium *into* reserve then check.
+        # Aggregate solvency guard — protects every in-force policyholder from a
+        # run where premiums alone can't fund concurrent payouts. The reserve
+        # (after taking this premium) must cover the TOTAL outstanding exposure
+        # across all active policies, not just this one policy in isolation.
         new_reserve = int(self.reserve_wei) + premium
-        # Simple solvency guard: reserve must be at least as large as the
-        # single new coverage after this deposit. Owner seeds initial cushion.
-        if new_reserve < coverage:
+        new_exposure = int(self.outstanding_exposure_wei) + coverage
+        if new_reserve < new_exposure:
             raise gl.vm.UserError(
-                "Protocol reserve too low to underwrite this policy; try smaller "
-                "coverage or wait for owner to top up"
+                "Protocol reserve can't cover total outstanding exposure with this "
+                "policy added; reduce coverage or wait for the owner to top up the reserve"
             )
 
         # Persist
@@ -397,6 +407,7 @@ class Bulwark(gl.Contract):
         self.reserve_wei = u256(new_reserve)
         self.total_premiums_wei = u256(int(self.total_premiums_wei) + premium)
         self.active_policy_count = u256(int(self.active_policy_count) + 1)
+        self.outstanding_exposure_wei = u256(new_exposure)
 
         return policy
 
@@ -479,7 +490,11 @@ class Bulwark(gl.Contract):
         policy["claim_id"] = claim_id
         policy["status"] = "CLAIMED" if covered else "REJECTED"
         self._save_policy(policy)
+        # Policy leaves the in-force book — release its exposure from the total.
         self.active_policy_count = u256(max(0, int(self.active_policy_count) - 1))
+        self.outstanding_exposure_wei = u256(
+            max(0, int(self.outstanding_exposure_wei) - int(policy["coverage_wei"]))
+        )
 
         if covered:
             self._settle(claim, claimant, payout)
