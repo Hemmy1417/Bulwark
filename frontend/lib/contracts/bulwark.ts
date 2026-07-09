@@ -197,14 +197,15 @@ class Bulwark {
 
   async fileClaim(args: {
     policyId: string;
-    primaryEvidenceUrl: string;
     causeEvidenceUrls: string[];
   }): Promise<{ receipt: TransactionReceipt; txHash: string }> {
     try {
       const txHash = await this.client.writeContract({
         address: this.contractAddress,
         functionName: "file_claim",
-        args: [args.policyId, args.primaryEvidenceUrl, args.causeEvidenceUrls],
+        // The authoritative slashing-status source is derived on-chain from
+        // the policy's validator index — the claimant only adds cause URLs.
+        args: [args.policyId, args.causeEvidenceUrls],
         value: BigInt(0),
       });
       const receipt = await this.waitAndVerify(txHash);

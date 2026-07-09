@@ -156,7 +156,6 @@ export function useFileClaim() {
   const mutation = useMutation({
     mutationFn: async (args: {
       policyId: string;
-      primaryEvidenceUrl: string;
       causeEvidenceUrls: string[];
     }) => {
       if (!contract) throw new Error("Contract not configured.");

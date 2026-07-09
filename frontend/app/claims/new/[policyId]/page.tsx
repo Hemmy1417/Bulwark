@@ -13,6 +13,21 @@ import { classify, preflight, type EvidenceVerdict } from "@/lib/evidence";
 
 const MAX_CAUSE_URLS = 3;
 
+// Mirrors the contract's _canonical_sources: the authoritative slashing-status
+// URLs are derived from the policy's own validator index, so the claimant
+// cannot substitute the source that decides the payout.
+function canonicalSources(validatorId: string, chainLabel: string): string[] {
+  const vid = (validatorId || "").trim();
+  const chain = (chainLabel || "").trim().toLowerCase();
+  if (chain.startsWith("eth") && /^\d+$/.test(vid)) {
+    return [`https://beaconscan.com/validator/${vid}`, `https://beaconcha.in/validator/${vid}`];
+  }
+  if (chain.startsWith("cosmos") && vid) {
+    return [`https://www.mintscan.io/cosmos/validators/${vid}`];
+  }
+  return [];
+}
+
 export default function NewClaimPage() {
   const params = useParams<{ policyId: string }>();
   const policyId = params.policyId;
@@ -22,7 +37,6 @@ export default function NewClaimPage() {
   const { data: policy, isLoading } = usePolicy(policyId);
   const { fileClaim, isFiling } = useFileClaim();
 
-  const [primary, setPrimary] = useState("");
   const [causeUrls, setCauseUrls] = useState<string[]>([""]);
 
   const addCauseUrl = () => {
@@ -34,16 +48,21 @@ export default function NewClaimPage() {
   const removeCauseUrl = (i: number) =>
     setCauseUrls((s) => (s.length === 1 ? s : s.filter((_, idx) => idx !== i)));
 
+  const pinned = useMemo(
+    () => (policy ? canonicalSources(policy.validator_identifier, policy.chain_label) : []),
+    [policy],
+  );
+
   const check = useMemo(
-    () => preflight(primary, causeUrls),
-    [primary, causeUrls],
+    () => preflight("", causeUrls),
+    [causeUrls],
   );
 
   const submit = () => {
     if (!isConnected) return toastError("Connect your wallet");
-    const p = primary.trim();
-    if (!p) return toastError("Primary evidence URL required");
-    if (!/^https?:\/\//i.test(p)) return toastError("URLs must start with http(s)://");
+    if (pinned.length === 0) {
+      return toastError("This chain/identifier has no canonical explorer — slashing status can't be independently verified.");
+    }
     const clean = causeUrls.map((u) => u.trim()).filter(Boolean);
     for (const u of clean) {
       if (!/^https?:\/\//i.test(u)) return toastError("Cause URLs must start with http(s)://");
@@ -53,7 +72,6 @@ export default function NewClaimPage() {
     }
     fileClaim({
       policyId,
-      primaryEvidenceUrl: p,
       causeEvidenceUrls: clean,
     }, {
       onSuccess: () => router.push("/claims"),
@@ -87,8 +105,10 @@ export default function NewClaimPage() {
         <div className="eyebrow mb-2">File a claim</div>
         <h1 className="display text-4xl mb-3">Policy #{policyId}</h1>
         <p className="text-ivory-soft/70">
-          Provide public evidence. The AI panel fetches every URL, agrees on the cause
-          bucket, and — if covered — pays out to your wallet on the same transaction.
+          The contract fetches the slashing status from a canonical explorer it
+          derives from your validator index — you can't pick that source. Add
+          optional cause URLs for the <span className="text-ivory">why</span>; the panel agrees on the
+          bucket and, if covered, pays out on the same transaction.
         </p>
       </div>
 
@@ -125,19 +145,34 @@ export default function NewClaimPage() {
       )}
 
       <div className="card p-6 space-y-5">
-        <Field
-          label="Primary evidence URL (validator status)"
-          hint="beaconscan.com/validator/<index> · mintscan.io/<chain>/validators/<addr> · a public Gist. Avoid beaconcha.in (403) and Etherscan."
-        >
-          <input
-            className="input mono text-sm"
-            placeholder="https://beaconscan.com/validator/…"
-            value={primary}
-            onChange={(e) => setPrimary(e.target.value)}
-            disabled={blocked}
-          />
-          <EvidencePill verdict={check.primary} url={primary} />
-        </Field>
+        {/* Contract-pinned authoritative source — the claimant cannot change it */}
+        <div>
+          <label className="block eyebrow mb-1.5">Authoritative status source — pinned by the contract</label>
+          {pinned.length > 0 ? (
+            <div className="space-y-2">
+              {pinned.map((u) => (
+                <a key={u} href={u} target="_blank" rel="noreferrer"
+                   className="flex items-center gap-2 px-3 py-2.5 rounded-sm mono text-xs hover:underline"
+                   style={{ background: "rgba(114,176,137,0.08)", border: "1px solid rgba(114,176,137,0.30)", color: "#8FCB9E" }}>
+                  <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+                  <span className="truncate">{u}</span>
+                  <ExternalLink className="w-3 h-3 ml-auto shrink-0" />
+                </a>
+              ))}
+              <p className="text-xs text-ivory-soft/50">
+                Derived on-chain from validator <span className="mono text-ivory">{policy.validator_identifier}</span> on{" "}
+                <span className="mono text-ivory">{policy.chain_label}</span>. The panel reads the <span className="text-ivory">slashed</span> fact
+                only from these — you can't substitute them, which is what makes the ruling verifiable.
+              </p>
+            </div>
+          ) : (
+            <div className="p-3 rounded-sm flex items-start gap-2 text-sm"
+                 style={{ background: "rgba(195,106,106,0.08)", border: "1px solid rgba(195,106,106,0.3)" }}>
+              <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" style={{ color: "var(--danger)" }} />
+              <span>No canonical explorer exists for this chain/identifier, so slashing status can't be independently verified. This policy can't be claimed.</span>
+            </div>
+          )}
+        </div>
 
         <div className="space-y-3">
           <div>
@@ -211,7 +246,7 @@ export default function NewClaimPage() {
         <button
           className="btn btn-gold w-full"
           onClick={submit}
-          disabled={blocked || isFiling || check.hasBlocked}
+          disabled={blocked || isFiling || check.hasBlocked || pinned.length === 0}
         >
           {isFiling ? (
             <><Loader2 className="w-4 h-4 animate-spin" /> Adjudicating…</>

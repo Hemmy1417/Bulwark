@@ -143,6 +143,53 @@ def _as(module, sender, value=0, block=None):
 
 # ── Tests ────────────────────────────────────────────────────────────────────
 
+# Pinned-evidence hardening: the authoritative slashing-status URLs are
+# derived by the contract from the policy's validator index, NOT supplied by
+# the claimant. This is what makes the payout-deciding fact verifiable.
+
+def test_canonical_sources_ethereum_corroborated(contract):
+    urls = contract._canonical_sources("123456", "ethereum")
+    assert urls == [
+        "https://beaconscan.com/validator/123456",
+        "https://beaconcha.in/validator/123456",
+    ]
+
+
+def test_canonical_sources_eth_alias_and_index_only(contract):
+    # accepts "eth"/"ethereum"; requires a pure integer index
+    assert contract._canonical_sources("42", "eth")[0].endswith("/validator/42")
+    assert contract._canonical_sources("not-an-index", "ethereum") == []
+
+
+def test_canonical_sources_cosmos(contract):
+    urls = contract._canonical_sources("cosmosvaloper1abc", "cosmos:cosmoshub-4")
+    assert urls == ["https://www.mintscan.io/cosmos/validators/cosmosvaloper1abc"]
+
+
+def test_canonical_sources_unknown_chain_empty(contract):
+    assert contract._canonical_sources("123", "solana") == []
+
+
+def test_file_claim_rejects_unverifiable_chain(module, contract):
+    # A policy whose chain has no canonical explorer cannot be claimed — the
+    # slashing status could not be independently verified.
+    _as(module, ALICE, value=0)
+    # buy a policy on an unsupported chain via a low-level insert isn't exposed;
+    # instead assert the guard fires through the public path using a bogus id.
+    import pytest as _pytest
+    # craft a minimal ACTIVE policy directly in storage for the guard test
+    contract.policy_counter = module.u256(1)
+    contract._save_policy({
+        "policy_id": "1", "policyholder": ALICE, "validator_identifier": "xyz",
+        "chain_label": "solana", "coverage_wei": "1000", "premium_wei": "10",
+        "duration_days": 30, "created_at_block": 1, "expires_at_block": 99,
+        "status": "ACTIVE", "claim_id": None,
+    })
+    _as(module, ALICE, value=0)
+    with _pytest.raises(module.gl.vm.UserError, match="cannot be independently verified"):
+        contract.file_claim("1", [])
+
+
 def test_initial_state(contract):
     params = contract.get_protocol_params()
     assert params["owner"] == OWNER

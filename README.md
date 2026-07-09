@@ -107,7 +107,7 @@ Bulwark/
 
 ## Contract
 
-- **Address:** `0xC21e82DB32654A7f9b4681BcE27ffC4E1609A70C`
+- **Address:** `0xeAE603181536614F377ae04a4dc222a2635c24eC`
 
 > **Payout fix (July 2026).** Wallet payouts are sent as EVM external messages (an empty `@gl.evm.contract_interface` proxy executed by the contract's ghost account). The previous GenVM-call pattern errored at finalization on plain wallets and stranded the value; the contract was redeployed at the address above with the corrected transfer path.
 
@@ -116,7 +116,7 @@ Bulwark/
 
 Read state:
 ```bash
-genlayer call 0xC21e82DB32654A7f9b4681BcE27ffC4E1609A70C get_protocol_params
+genlayer call 0xeAE603181536614F377ae04a4dc222a2635c24eC get_protocol_params
 ```
 
 ---
