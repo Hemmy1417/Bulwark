@@ -20,7 +20,8 @@ function canonicalSources(validatorId: string, chainLabel: string): string[] {
   const vid = (validatorId || "").trim();
   const chain = (chainLabel || "").trim().toLowerCase();
   if (chain.startsWith("eth") && /^\d+$/.test(vid)) {
-    return [`https://beaconscan.com/validator/${vid}`, `https://beaconcha.in/validator/${vid}`];
+    const path = `eth/v1/beacon/states/finalized/validators/${vid}`;
+    return [`https://ethereum-beacon-api.publicnode.com/${path}`, `https://docs-demo.quiknode.pro/${path}`];
   }
   if (chain.startsWith("cosmos") && vid) {
     return [`https://www.mintscan.io/cosmos/validators/${vid}`];
@@ -119,9 +120,9 @@ export default function NewClaimPage() {
         clauseLabel="Item"
         intro="GenLayer validators fetch each cited URL independently. Sources must render as public HTML without client-side scripting; anything gated, JavaScript-only, or rate-limited is inadmissible and will vitiate the round."
         items={[
-          { label: "Admissible — validator status",  body: "beaconscan.com, mintscan.io, or any chain-native explorer that returns a rendered HTML page confirming slashing status without JavaScript." },
-          { label: "Admissible — cause narrative",   body: "Official client release notes (Prysm, Lighthouse, Nimbus, Teku), operator post-mortems hosted as static markdown or plain HTML, and public incident reports." },
-          { label: "Inadmissible",                    body: "beaconcha.in and Etherscan (403 to validator fetchers), Twitter/X live pages (JavaScript shell), and any resource requiring authentication." },
+          { label: "Validator status is automatic", body: "You don't cite it. The contract fetches the slashing fact from the Ethereum Beacon Chain API (JSON) at two independent providers, derived from your validator index — the definitive `validator.slashed` boolean from finalized chain state." },
+          { label: "Admissible — cause narrative",   body: "Official client release notes (Prysm, Lighthouse, Nimbus, Teku), operator post-mortems hosted as static markdown or plain HTML, and public incident reports. These drive the BUG / UNAVOIDABLE / NEGLIGENCE cause ruling." },
+          { label: "Inadmissible cause URLs",         body: "Twitter/X live pages (JavaScript shell), Cloudflare-gated explorers, and anything requiring authentication. Use a public Gist or Wayback snapshot instead." },
           { label: "Adjudication timing",             body: "Independent fetch, LLM ruling, bucketed consensus, and — where covered — settlement occur on the same transaction. Allow one to three minutes for validators to converge." },
         ]}
       />

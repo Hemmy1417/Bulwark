@@ -15,7 +15,7 @@ export type EvidenceVerdict =
  */
 const BLOCKED_HOSTS: { rx: RegExp; reason: string }[] = [
   { rx: /(^|\.)beaconcha\.in$/i,
-    reason: "beaconcha.in returns 403 to non-browser fetchers — validators cannot read it. Use beaconscan.com/validator/<index> instead." },
+    reason: "beaconcha.in returns 403 to non-browser fetchers. Note: the validator STATUS source is auto-pinned by the contract (Beacon Chain API) — you only cite cause-narrative URLs here." },
   { rx: /(^|\.)etherscan\.io$/i,
     reason: "Etherscan blocks validator queries with 403 — use beaconscan.com or mintscan.io for the target chain." },
   { rx: /(^|\.)twitter\.com$|(^|\.)x\.com$/i,

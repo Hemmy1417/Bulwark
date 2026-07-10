@@ -177,14 +177,14 @@ def _as(module, sender, value=0, block=None):
 def test_canonical_sources_ethereum_corroborated(contract):
     urls = contract._canonical_sources("123456", "ethereum")
     assert urls == [
-        "https://beaconscan.com/validator/123456",
-        "https://beaconcha.in/validator/123456",
+        "https://ethereum-beacon-api.publicnode.com/eth/v1/beacon/states/finalized/validators/123456",
+        "https://docs-demo.quiknode.pro/eth/v1/beacon/states/finalized/validators/123456",
     ]
 
 
 def test_canonical_sources_eth_alias_and_index_only(contract):
     # accepts "eth"/"ethereum"; requires a pure integer index
-    assert contract._canonical_sources("42", "eth")[0].endswith("/validator/42")
+    assert contract._canonical_sources("42", "eth")[0].endswith("/validators/42")
     assert contract._canonical_sources("not-an-index", "ethereum") == []
 
 
@@ -633,8 +633,8 @@ def test_file_claim_pins_sources_and_runs(module, contract):
     claim = contract.file_claim(policy["policy_id"], ["https://gist.github.com/x/postmortem"])
     # authoritative sources were derived by the contract, not supplied
     assert claim["pinned_sources"] == [
-        "https://beaconscan.com/validator/123456",
-        "https://beaconcha.in/validator/123456",
+        "https://ethereum-beacon-api.publicnode.com/eth/v1/beacon/states/finalized/validators/123456",
+        "https://docs-demo.quiknode.pro/eth/v1/beacon/states/finalized/validators/123456",
     ]
     assert claim["status"] == "PAID" and claim["covered"] is True
     assert claim["appeal_count"] == 0 and len(claim["history"]) == 1

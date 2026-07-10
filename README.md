@@ -2,22 +2,35 @@
 
 **AI-arbitrated validator slashing insurance on GenLayer.**
 
-Stake with a validator. Bind a Bulwark policy. If your validator is later slashed, file notice of claim with public evidence URLs — a panel of GenLayer AI validators reads the evidence, rules the cause, and — where covered — settles the sum insured straight to your wallet on the same transaction.
+Stake with a validator. Bind a Bulwark policy. If your validator is later slashed, file a claim — the contract fetches the validator's status from a **canonical Beacon Chain API it derives from your validator index** (you can't hand it a fake page), a panel of GenLayer AI validators rules the *cause* from that plus any narrative evidence, and — where covered — settles the sum insured straight to your wallet on the same transaction.
 
 **The pitch in one line:** slashing insurance that pays out in minutes, not weeks.
 
 ---
 
+## Iteration log
+
+Bulwark has been developed through deliberate, tested iterations — each one a contract change, a test-suite expansion, and an on-chain redeploy:
+
+1. **Pinned evidence.** Moved the payout-deciding source from a claimant-supplied URL to one the contract derives from the validator index (`_canonical_sources`) — the Beacon Chain REST API across two keyless providers. Closes the "judging user-submitted text" gap.
+2. **Appeal path.** One-shot re-adjudication that must bring new evidence; a fresh validator set re-rules; full ruling `history` on-chain.
+3. **Risk-tiered premiums.** Flat pricing → an actuarial model priced off chain risk, the pool's live loss ratio, the buyer's claim record, and policy size.
+4. **Solvency accounting.** Aggregate outstanding-exposure tracking; the bind guard protects the whole in-force book, with a live solvency ratio.
+
+36 direct tests; the AI path (`file_claim` / `appeal_claim`) is exercised end-to-end via a primeable equivalence-principle stub.
+
+---
+
 ## Why GenLayer
 
-A standard smart contract can prove *that* a validator was slashed by reading beacon-chain state. That's the easy half.
+Proving *that* a validator was slashed is the easy half — you read beacon-chain state. The **contract does exactly that, from a source it pins itself**: `_canonical_sources` builds **Beacon Chain REST API** URLs (two independent keyless providers) from the policy's own validator index, so the fact that decides the payout is never user-submitted text.
 
-The interesting half — *why* the slashing happened, and whether the cause is covered — is inherently narrative. You have to read operator post-mortems, client release notes, and incident reports. That's LLM-shaped work, and GenLayer's `web.render` + `exec_prompt` + `prompt_comparative` primitives compose it into a single atomic, on-chain, replay-verifiable ruling.
+The hard half — *why* it happened, and whether the cause is covered — is inherently narrative: operator post-mortems, client release notes, incident reports. That's LLM-shaped work, and GenLayer composes it into one atomic, on-chain, replay-verifiable ruling.
 
-- `gl.nondet.web.render(url, mode="text")` — each validator fetches the evidence URL independently
+- `gl.nondet.web.render(url, mode="text")` — each validator independently fetches the **contract-pinned** Beacon API (JSON — `data.validator.slashed`) (+ claimant cause URLs, which are narrative-only and cannot establish a slashing)
 - `gl.nondet.exec_prompt(...)` — LLM rules the cause bucket (BUG / UNAVOIDABLE / NEGLIGENCE / NOT_SLASHED)
-- `gl.eq_principle.prompt_comparative(...)` — validators bucket their rulings on the cause label, so LLM stylistic variation never kills a consensus round
-- `emit_transfer(..., on="finalized")` — covered rulings settle on the same tx that decided them
+- `gl.eq_principle.prompt_comparative(...)` — validators agree on the cause label, so LLM stylistic variation never kills a consensus round; the **payout is bound to the semantic outcome** (`covered = slashed and cause in COVERED_CAUSES`), never to output format
+- `emit_transfer(..., on="finalized")` — covered rulings settle at finality, so a ruling must survive the appeal window before money moves
 
 ---
 
@@ -34,30 +47,48 @@ The rule set is encoded as a pure Python function so future policies can extend 
 
 ---
 
-## Premium schedule
+## Risk-tiered premiums
 
-Premiums scale with the period of insurance — longer risk window, higher rate.
+Premiums are actuarially priced, not flat. `preview_premium` returns every component so the quote is fully transparent:
 
-| Duration | Rate (bps of coverage) | Example on 1 GEN coverage |
-|---------:|-----------------------:|--------------------------:|
-|  7 days  | 100 (1.0%)             | 0.01 GEN                  |
-| 30 days  | 500 (5.0%)             | 0.05 GEN                  |
-| 90 days  | 1200 (12%)             | 0.12 GEN                  |
+| Component | Effect |
+|---|---|
+| **Base duration rate** | 7d = 1.0% · 30d = 5.0% · 90d = 12% of coverage |
+| **Chain risk multiplier** | Ethereum ×1.00 · Cosmos ×1.30 · unknown chain ×1.50 (priced defensively where slashing data is thin) |
+| **Experience rating** | surcharge (capped +8%) when the pool's own loss ratio (`total_payouts / total_premiums`) runs hot |
+| **Claim record** | +2% effective per prior *covered* claim by the buyer (capped) — a repeat claimant and a clean wallet get different quotes |
+| **Concentration load** | +1.5% on large single-validator policies (≥ 5 GEN) |
 
-**Coverage bounds:** 0.1 GEN minimum, 10 GEN maximum per policy (MVP cap so a seeded reserve is always solvent for demos).
+**Coverage bounds:** 0.1 GEN minimum, 10 GEN maximum per policy.
 
-**Solvency guarantee:** a new policy binds only if the reserve — inclusive of the incoming premium — is at least equal to the sum insured. Enforced by the contract at write time.
+**Aggregate solvency guard:** a new policy binds only if the reserve — inclusive of the incoming premium — covers the **total outstanding exposure across every in-force policy**, not just the one being bought. Exposure is released back to the pool when a policy leaves the book at claim time. The pool page shows a live solvency ratio (`reserve / outstanding_exposure`).
+
+---
+
+## Appeals
+
+A `REJECTED` claim can be appealed **once**, and only by bringing **new cause evidence**. The appeal is a fresh consensus round — in the spirit of GenLayer's native appeals, a new/larger validator set re-rules. It's principled, not a re-roll: the pinned status sources are unchanged, so an appeal can only recategorise *why* a slashing happened (e.g. Negligence → Bug), never manufacture one the explorers don't show. Every ruling is kept in the claim's on-chain `history`.
+
+---
+
+## Honest boundaries
+
+Stated up front rather than left for a reviewer to find:
+
+- **Evidence-fetch fragility.** Stress testing surfaced that HTML explorers (beaconscan, beaconcha.in) are Cloudflare/403-blocked to GenLayer's fetcher, so the authoritative source was moved to the **Beacon Chain REST API** across two keyless JSON providers (PublicNode + QuikNode public demo) — machine-readable and far more fetch-friendly. Corroboration across two providers is best-effort: if both are momentarily blocked, the contract correctly rules `NOT_SLASHED` rather than paying on unverifiable evidence. The QuikNode demo endpoint is a public shared demo and not guaranteed long-term.
+- **No wall-clock on GenLayer.** With no block timestamp available, `_now()` is a monotonic counter; a policy's `expires_at_block` is ordinal, not real elapsed time, so policies do not auto-expire by the calendar. Duration drives *pricing*; real-time expiry is a documented limitation.
+- **The panel judges depiction, the payout binds to fact.** A ruling is only as good as what the pinned Beacon API reports. File claims on genuinely-slashed validators — the honesty of the on-chain trail depends on real evidence, not a staged page.
 
 ---
 
 ## Evidence sources — what actually works
 
-Every claim carries **one required primary URL** confirming the slashing plus **1–3 optional narrative URLs** driving the cause ruling. **The important thing to know is that GenLayer validators cannot render JavaScript and get 403'd by several popular explorers.** URL selection matters.
+The **status source is contract-pinned** (derived from the validator index — see *Why GenLayer*), so the claimant no longer chooses it. A claim carries only **1–3 optional narrative URLs** driving the *cause* ruling. **The important thing to know is that GenLayer validators cannot render JavaScript and get 403'd by several popular explorers**, so your cause-URL selection still matters.
 
 ### ✅ Verified fetch-friendly
 
-- `beaconscan.com/validator/<index>` — Ethereum beacon chain, HTML shell renders without JS
-- `mintscan.io/<chain>/validators/<addr>` — Cosmos ecosystem
+- **Ethereum Beacon Chain API (auto-pinned, JSON, keyless):** `ethereum-beacon-api.publicnode.com/.../validators/<index>` and `docs-demo.quiknode.pro/.../validators/<index>` — return the authoritative `validator.slashed` boolean from finalized chain state. This is what the contract fetches; the claimant never supplies it.
+- `mintscan.io/<chain>/validators/<addr>` — Cosmos ecosystem (auto-pinned)
 - `github.com/prysmaticlabs/prysm/releases`, `github.com/sigp/lighthouse/releases` — real client-bug advisories
 - `ethereum.org/en/developers/docs/consensus-mechanisms/pos/rewards-and-penalties/`
 - `en.wikipedia.org/wiki/*` — narrative background
@@ -65,7 +96,6 @@ Every claim carries **one required primary URL** confirming the slashing plus **
 
 ### ❌ Do not use — these fail silently or 403
 
-- `beaconcha.in/*` — **returns 403 to non-browser fetchers**
 - `etherscan.io/*` on validator queries — 403
 - `twitter.com` / `x.com` — JavaScript-only shells (use Nitter mirror or Wayback snapshot instead)
 - `mirror.xyz/*` — JavaScript-only shells for the article body
@@ -107,7 +137,7 @@ Bulwark/
 
 ## Contract
 
-- **Address:** `0x74423766d19a7Ea51a61153582eaeF00Cc840F62`
+- **Address:** `0xFb58D6AF7449179aa7374cE3BFC57f03E9bEF368`
 
 > **Payout fix (July 2026).** Wallet payouts are sent as EVM external messages (an empty `@gl.evm.contract_interface` proxy executed by the contract's ghost account). The previous GenVM-call pattern errored at finalization on plain wallets and stranded the value; the contract was redeployed at the address above with the corrected transfer path.
 
@@ -116,7 +146,7 @@ Bulwark/
 
 Read state:
 ```bash
-genlayer call 0x74423766d19a7Ea51a61153582eaeF00Cc840F62 get_protocol_params
+genlayer call 0xFb58D6AF7449179aa7374cE3BFC57f03E9bEF368 get_protocol_params
 ```
 
 ---
