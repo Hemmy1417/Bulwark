@@ -18,7 +18,7 @@ Bulwark has been developed through deliberate, tested iterations — each one a 
 4. **Solvency accounting.** Aggregate outstanding-exposure tracking; the bind guard protects the whole in-force book, with a live solvency ratio.
 5. **Enforced coverage window.** The contract now *proves* the validator was unslashed when coverage began, *verifies* a slash fell inside the purchased term, and *releases* exposure on expiry — all from the Beacon repository, no user input. Closes the pre-existing / late-slash claim gap. (See **Coverage window** below.)
 
-46 direct tests; the AI path (`file_claim` / `appeal_claim`) and the coverage-window logic are exercised end-to-end via a primeable equivalence-principle stub with a Beacon-shaped web stub.
+51 direct tests; the AI path (`file_claim` / `appeal_claim`) and the coverage-window logic are exercised end-to-end via a primeable equivalence-principle stub with a Beacon-shaped web stub.
 
 ---
 
@@ -169,7 +169,7 @@ Bulwark/
 
 ## Contract
 
-- **Address:** `0x09aEa4cF4c9024925FbFe147B56aEe83A21c9b7C`
+- **Address:** `0x727d002D9b6C531A72BA78b16e912d2bb2C65a9D`
 
 > **Payout fix (July 2026).** Wallet payouts are sent as EVM external messages (an empty `@gl.evm.contract_interface` proxy executed by the contract's ghost account). The previous GenVM-call pattern errored at finalization on plain wallets and stranded the value; the contract was redeployed at the address above with the corrected transfer path.
 
@@ -178,7 +178,7 @@ Bulwark/
 
 Read state:
 ```bash
-genlayer call 0x09aEa4cF4c9024925FbFe147B56aEe83A21c9b7C get_protocol_params
+genlayer call 0x727d002D9b6C531A72BA78b16e912d2bb2C65a9D get_protocol_params
 ```
 
 ---

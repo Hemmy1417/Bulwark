@@ -20,7 +20,7 @@ import pytest
 FAR = (1 << 64) - 1
 
 # Primeable Beacon state the web stub serves. Defaults: unslashed, epoch 1000.
-_WEB = {"epoch": 1000, "slashed": False, "we": FAR, "validator_ok": True, "epoch_ok": True}
+_WEB = {"epoch": 900, "slashed": False, "we": FAR, "validator_ok": True, "epoch_ok": True}
 
 
 def _prime_web(epoch=None, slashed=None, we=None, validator_ok=None, epoch_ok=None):
@@ -32,7 +32,7 @@ def _prime_web(epoch=None, slashed=None, we=None, validator_ok=None, epoch_ok=No
 
 
 def _reset_web():
-    _WEB.update({"epoch": 1000, "slashed": False, "we": FAR, "validator_ok": True, "epoch_ok": True})
+    _WEB.update({"epoch": 900, "slashed": False, "we": FAR, "validator_ok": True, "epoch_ok": True})
 
 
 CONTRACT_PATH = pathlib.Path(__file__).resolve().parents[2] / "contracts" / "bulwark.py"
@@ -639,7 +639,7 @@ def test_get_claim_ledger_returns_reverse_chronological(module, contract):
 def _prime(module, slashed, cause, confidence=80, we=10192):
     # The LLM returns only the CAUSE; the slash fact + timing come from the
     # (primed) Beacon web state. Default we=10192 → slash_epoch=2000, which is
-    # inside the default coverage window [1000, 7750] a policy bought at epoch
+    # inside the default coverage window [900, 7650] a policy bought at epoch
     # 1000 for 30 days (30×225=6750 epochs) gets.
     _EqPrinciple.cause_canned = json.dumps({"cause": cause, "confidence": confidence, "summary": "stub ruling"})
     _prime_web(slashed=slashed, we=(we if slashed else FAR))
@@ -838,17 +838,17 @@ def test_buy_policy_rejects_already_slashed_validator(module, contract):
 
 def test_buy_policy_records_coverage_window(module, contract):
     _as(module, OWNER, value=10 * 10 ** 18); contract.owner_seed_reserve()
-    _prime_web(epoch=5000)
+    _prime_web(epoch=5000)                              # floors to 4950 (5000//225*225)
     cov = 10 ** 18; prem = cov * 5 // 100
     _as(module, ALICE, value=prem)
     p = contract.buy_policy("123456", "ethereum", cov, 30)
-    assert p["coverage_start_epoch"] == 5000
-    assert p["coverage_end_epoch"] == 5000 + 30 * 225   # term in epochs
+    assert p["coverage_start_epoch"] == 4950            # floored to the day bucket
+    assert p["coverage_end_epoch"] == 4950 + 30 * 225   # term in epochs
 
 
 def test_claim_in_term_slash_pays(module, contract):
     _install_fake_transfers(module)
-    policy = _buy_active_policy(module, contract)        # window [1000, 7750]
+    policy = _buy_active_policy(module, contract)        # window [900, 7650]
     _prime(module, slashed=True, cause="BUG", we=1000 + 8192)  # slash_epoch=1000, in term
     _as(module, ALICE, value=0)
     claim = contract.file_claim(policy["policy_id"], ["https://gist.github.com/pm"])
@@ -858,7 +858,7 @@ def test_claim_in_term_slash_pays(module, contract):
 
 def test_claim_pre_existing_slash_rejected(module, contract):
     _install_fake_transfers(module)
-    policy = _buy_active_policy(module, contract)        # window [1000, 7750]
+    policy = _buy_active_policy(module, contract)        # window [900, 7650]
     # slash_epoch = 500 → before coverage began
     _prime(module, slashed=True, cause="BUG", we=500 + 8192)
     _as(module, ALICE, value=0)
@@ -869,7 +869,7 @@ def test_claim_pre_existing_slash_rejected(module, contract):
 
 def test_claim_late_slash_rejected(module, contract):
     _install_fake_transfers(module)
-    policy = _buy_active_policy(module, contract)        # window [1000, 7750]
+    policy = _buy_active_policy(module, contract)        # window [900, 7650]
     # slash_epoch = 9000 → after the term ended
     _prime(module, slashed=True, cause="BUG", we=9000 + 8192)
     _as(module, ALICE, value=0)
@@ -882,7 +882,7 @@ def test_expire_policy_releases_exposure(module, contract):
     _as(module, OWNER, value=10 * 10 ** 18); contract.owner_seed_reserve()
     cov = 10 ** 18; prem = cov * 5 // 100
     _as(module, ALICE, value=prem)
-    p = contract.buy_policy("123456", "ethereum", cov, 30)   # window [1000, 7750]
+    p = contract.buy_policy("123456", "ethereum", cov, 30)   # window [900, 7650]
     assert int(contract.outstanding_exposure_wei) == cov
     # not yet expired
     _prime_web(epoch=5000)
@@ -934,46 +934,17 @@ def test_baseline_rejects_already_slashed(module, contract):
 
 
 def test_buy_records_coverage_window(module, contract):
-    p = _seed_and_buy(module, contract)
+    p = _seed_and_buy(module, contract)                   # epoch 900 (bucket-aligned)
     assert p["baseline_slashed"] is False
-    assert p["coverage_start_epoch"] == 1000
-    assert p["coverage_end_epoch"] == 1000 + 30 * 225     # start + term_epochs
+    assert p["coverage_start_epoch"] == 900               # floored to the day
+    assert p["coverage_end_epoch"] == 900 + 30 * 225      # start + term_epochs = 7650
 
 
-def test_claim_pre_existing_slash_rejected(module, contract):
-    p = _seed_and_buy(module, contract)                   # window [1000, 7750]
-    _TRANSFER_LOG.clear()
-    _prime_web(slashed=True, we=8500)                     # slash_epoch = 308 < 1000
-    _EqPrinciple.cause_canned = '{"cause":"BUG","confidence":90,"summary":"stub"}'
-    _as(module, ALICE)
-    claim = contract.file_claim(p["policy_id"], [])
-    assert claim["window_note"] == "PRE_EXISTING"
-    assert claim["covered"] is False and claim["status"] == "REJECTED"
-    assert _TRANSFER_LOG == []                            # nothing paid
-
-
-def test_claim_late_slash_rejected(module, contract):
-    p = _seed_and_buy(module, contract)                   # end 7750
-    _TRANSFER_LOG.clear()
-    _prime_web(slashed=True, we=7750 + 8192 + 1)          # slash_epoch = 7751 > 7750
-    _EqPrinciple.cause_canned = '{"cause":"BUG","confidence":90,"summary":"stub"}'
-    _as(module, ALICE)
-    claim = contract.file_claim(p["policy_id"], [])
-    assert claim["window_note"] == "LATE"
-    assert claim["covered"] is False
-    assert _TRANSFER_LOG == []
-
-
-def test_claim_in_term_slash_pays(module, contract):
-    p = _seed_and_buy(module, contract)                   # window [1000, 7750]
-    _TRANSFER_LOG.clear()
-    _prime_web(slashed=True, we=2000 + 8192)              # slash_epoch = 2000, in term
-    _EqPrinciple.cause_canned = '{"cause":"BUG","confidence":90,"summary":"stub"}'
-    _as(module, ALICE)
-    claim = contract.file_claim(p["policy_id"], [])
-    assert claim["window_note"] == "IN_TERM" and claim["in_window"] is True
-    assert claim["covered"] is True and claim["status"] == "PAID"
-    assert _TRANSFER_LOG and _TRANSFER_LOG[0][0] == 10 ** 18   # coverage paid out
+def test_epoch_floored_to_bucket(module, contract):
+    # a jittery raw epoch floors to a stable bucket, so validators agree exactly
+    _prime_web(epoch=901)                                 # not bucket-aligned
+    p = _seed_and_buy(module, contract)
+    assert p["coverage_start_epoch"] == 900               # 901 → floor(901/225)*225
 
 
 def test_expire_releases_exposure(module, contract):
@@ -986,3 +957,43 @@ def test_expire_releases_exposure(module, contract):
     out = contract.expire_policy(p["policy_id"])
     assert out["status"] == "EXPIRED"
     assert int(contract.outstanding_exposure_wei) == 0    # exposure released
+
+
+def test_not_slashed_claim_rejected_no_payout(module, contract):
+    p = _seed_and_buy(module, contract)                   # validator stays unslashed
+    _TRANSFER_LOG.clear()
+    _as(module, ALICE)
+    claim = contract.file_claim(p["policy_id"], [])
+    assert claim["window_note"] == "NOT_SLASHED"
+    assert claim["covered"] is False and claim["status"] == "REJECTED"
+    assert _TRANSFER_LOG == []
+
+
+def test_claim_then_expire_no_double_release(module, contract):
+    # A resolved claim already released the exposure; expire must not release it again.
+    p = _seed_and_buy(module, contract)
+    _as(module, ALICE); contract.file_claim(p["policy_id"], [])   # NOT_SLASHED → REJECTED, exposure freed
+    assert int(contract.outstanding_exposure_wei) == 0
+    _prime_web(epoch=8000)
+    with pytest.raises(module.gl.vm.UserError, match="not ACTIVE"):
+        contract.expire_policy(p["policy_id"])
+    assert int(contract.outstanding_exposure_wei) == 0            # still 0, never went negative
+
+
+def test_expire_then_claim_blocked(module, contract):
+    p = _seed_and_buy(module, contract)
+    _prime_web(epoch=8000)
+    contract.expire_policy(p["policy_id"])                        # EXPIRED
+    assert int(contract.outstanding_exposure_wei) == 0
+    _as(module, ALICE)
+    with pytest.raises(module.gl.vm.UserError, match="not ACTIVE"):
+        contract.file_claim(p["policy_id"], [])                  # can't claim an expired policy
+
+
+def test_double_expire_blocked(module, contract):
+    p = _seed_and_buy(module, contract)
+    _prime_web(epoch=8000)
+    contract.expire_policy(p["policy_id"])
+    with pytest.raises(module.gl.vm.UserError, match="not ACTIVE"):
+        contract.expire_policy(p["policy_id"])                   # can't expire twice → no double release
+    assert int(contract.outstanding_exposure_wei) == 0

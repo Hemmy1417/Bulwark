@@ -59,6 +59,12 @@ MAX_APPEALS        = 1               # one appeal per claim — must bring new e
 EPOCHS_PER_DAY = 225                  # 32 slots × 12s = 384s/epoch → ~225 epochs/day
 EPOCHS_PER_SLASHINGS_VECTOR = 8192    # withdrawable_epoch = slash_epoch + this
 FAR_FUTURE_EPOCH = (1 << 64) - 1      # a non-slashed validator's withdrawable_epoch
+# The current finalized epoch jitters by ~1 across independent validator fetches.
+# We floor it to a coarse anchor bucket so every validator returns a byte-identical
+# value and consensus is an exact match (no fuzzy integer comparison). A ~1-day
+# floor is irrelevant on a multi-week coverage window, and the baseline
+# slashed==false check independently blocks any pre-purchase slash.
+EPOCH_ANCHOR_BUCKET = EPOCHS_PER_DAY  # floor coverage_start_epoch to the day
 
 
 def _extract_validator_facts(raw_text: str):
@@ -275,8 +281,11 @@ class Bulwark(gl.Contract):
             cur = -1
             for u in epoch_urls:
                 try:
-                    cur = _extract_finalized_epoch(gl.nondet.web.render(u, mode="text"))
-                    if cur >= 0:
+                    raw = _extract_finalized_epoch(gl.nondet.web.render(u, mode="text"))
+                    if raw >= 0:
+                        # Floor to the anchor bucket so independent fetches agree
+                        # exactly, not just approximately.
+                        cur = (raw // EPOCH_ANCHOR_BUCKET) * EPOCH_ANCHOR_BUCKET
                         break
                 except Exception:
                     continue
@@ -293,10 +302,13 @@ class Bulwark(gl.Contract):
             return json.dumps({"current_epoch": cur, "slashed": slashed,
                                "withdrawable_epoch": we, "got": got})
 
+        # Every field is now a stable, floored value, so validators return
+        # identical output — consensus is a simple exact match (no LLM
+        # arithmetic on jittery epochs).
         principle = (
-            "Outputs are equivalent if the boolean 'slashed', integer "
-            "'withdrawable_epoch', and boolean 'got' match exactly, and the "
-            "'current_epoch' integers are within 8 of each other."
+            "Outputs are equivalent only if all fields match exactly: the boolean "
+            "'slashed', the integer 'withdrawable_epoch', the integer 'current_epoch', "
+            "and the boolean 'got'."
         )
         return json.loads(gl.eq_principle.prompt_comparative(probe, principle))
 
