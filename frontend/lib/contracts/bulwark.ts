@@ -62,12 +62,25 @@ class Bulwark {
     }
     if (r?.execution_result === "ERROR") {
       const stderr: string = r?.genvm_result?.stderr ?? "";
+      // A clean gl.vm.UserError reverts with EMPTY stderr — its message rides in
+      // a rollback "payload" field, not stderr. Walk the whole receipt for it.
+      const payloads: string[] = [];
+      const walk = (o: any, d = 0) => {
+        if (!o || d > 8) return;
+        if (Array.isArray(o)) { o.forEach((x) => walk(x, d + 1)); return; }
+        if (typeof o === "object") {
+          if (typeof o.payload === "string" && o.payload && o.payload !== "exit_code 1") payloads.push(o.payload);
+          Object.values(o).forEach((v) => walk(v, d + 1));
+        }
+      };
+      walk(receipt);
       const userErr = stderr.match(/UserError: (.+)/)?.[1];
-      if (userErr) throw new Error(userErr);
+      const msg = userErr || payloads.sort((a, b) => b.length - a.length)[0] || "";
+      console.error("[Bulwark] contract execution error:", { stderr, payloads, receipt });
+      if (msg) throw new Error(msg.slice(0, 240));
       const lines = stderr.trim().split("\n").filter((l) => l.trim() && !l.startsWith("  "));
       const last = lines[lines.length - 1] || "";
       const specific = last.replace(/^.*?Error: /, "").slice(0, 240);
-      console.error("[Bulwark] contract execution error:", stderr);
       throw new Error(specific || "Contract execution error — check the console for the traceback");
     }
     return receipt as TransactionReceipt;
