@@ -16,8 +16,9 @@ Bulwark has been developed through deliberate, tested iterations — each one a 
 2. **Appeal path.** One-shot re-adjudication that must bring new evidence; a fresh validator set re-rules; full ruling `history` on-chain.
 3. **Risk-tiered premiums.** Flat pricing → an actuarial model priced off chain risk, the pool's live loss ratio, the buyer's claim record, and policy size.
 4. **Solvency accounting.** Aggregate outstanding-exposure tracking; the bind guard protects the whole in-force book, with a live solvency ratio.
+5. **Enforced coverage window.** The contract now *proves* the validator was unslashed when coverage began, *verifies* a slash fell inside the purchased term, and *releases* exposure on expiry — all from the Beacon repository, no user input. Closes the pre-existing / late-slash claim gap. (See **Coverage window** below.)
 
-36 direct tests; the AI path (`file_claim` / `appeal_claim`) is exercised end-to-end via a primeable equivalence-principle stub.
+46 direct tests; the AI path (`file_claim` / `appeal_claim`) and the coverage-window logic are exercised end-to-end via a primeable equivalence-principle stub with a Beacon-shaped web stub.
 
 ---
 
@@ -65,6 +66,37 @@ Premiums are actuarially priced, not flat. `preview_premium` returns every compo
 
 ---
 
+## Coverage window (enforced, Beacon-anchored)
+
+A duration you *pay* for is worthless if the contract doesn't *enforce* it. Bulwark now proves the whole
+coverage window from the Beacon Chain's own validator registry — the repository source — with nothing
+supplied by the claimant:
+
+- **Proven unslashed at coverage start.** `buy_policy` fetches the validator (via the contract-derived
+  Beacon API) and **refuses to bind if it is already slashed** — a pre-existing condition can't be
+  insured. It records `baseline_slashed: false` and anchors `coverage_start_epoch` to the live finalized
+  epoch (from `finality_checkpoints`).
+- **Slash verified *within* the term.** The Beacon validator object carries the slash timing itself:
+  a slashed validator's `withdrawable_epoch = slash_epoch + EPOCHS_PER_SLASHINGS_VECTOR (8192)`, so the
+  contract reconstructs **when** the slash happened and requires
+  `coverage_start_epoch ≤ slash_epoch ≤ coverage_end_epoch`. A slash before the term is `PRE_EXISTING`,
+  after it is `LATE`; both pay **nothing** (`covered = slashed and cause in COVERED_CAUSES and in_window`).
+  The appeal path enforces the same window — an appeal can never manufacture an out-of-term payout.
+- **Exposure released on expiry.** `expire_policy` fetches the current finalized epoch, requires it to be
+  at/after `coverage_end_epoch`, marks the policy `EXPIRED`, and frees its coverage from the
+  outstanding-exposure book so the reserve backs only live risk. Keeper-callable (anyone), epoch-gated —
+  no wall-clock trust, no owner discretion.
+
+This is a pure *fact* mechanism (deterministic JSON parsing of the pinned Beacon state), separate from the
+LLM *cause* ruling: the model never decides whether-slashed or the timing — only the covered/not-covered
+cause bucket for a slash the repository already confirms, inside a term the repository already dates.
+
+**Honest edge:** `slash_epoch = withdrawable_epoch − 8192` is exact for a normally-active validator (the
+slashings-vector term dominates the exit delay per the consensus spec); a validator already mid-exit with
+an unusually distant withdrawal could skew it — it doesn't arise in practice, but it's disclosed.
+
+---
+
 ## Appeals
 
 A `REJECTED` claim can be appealed **once**, and only by bringing **new cause evidence**. The appeal is a fresh consensus round — in the spirit of GenLayer's native appeals, a new/larger validator set re-rules. It's principled, not a re-roll: the pinned status sources are unchanged, so an appeal can only recategorise *why* a slashing happened (e.g. Negligence → Bug), never manufacture one the explorers don't show. Every ruling is kept in the claim's on-chain `history`.
@@ -76,7 +108,7 @@ A `REJECTED` claim can be appealed **once**, and only by bringing **new cause ev
 Stated up front rather than left for a reviewer to find:
 
 - **Evidence-fetch fragility.** Stress testing surfaced that HTML explorers (beaconscan, beaconcha.in) are Cloudflare/403-blocked to GenLayer's fetcher, so the authoritative source was moved to the **Beacon Chain REST API** across two keyless JSON providers (PublicNode + QuikNode public demo) — machine-readable and far more fetch-friendly. Corroboration across two providers is best-effort: if both are momentarily blocked, the contract correctly rules `NOT_SLASHED` rather than paying on unverifiable evidence. The QuikNode demo endpoint is a public shared demo and not guaranteed long-term.
-- **No wall-clock on GenLayer.** With no block timestamp available, `_now()` is a monotonic counter; a policy's `expires_at_block` is ordinal, not real elapsed time, so policies do not auto-expire by the calendar. Duration drives *pricing*; real-time expiry is a documented limitation.
+- **No wall-clock on GenLayer.** GenVM exposes no block timestamp, so the coverage *window* is anchored to the **Beacon Chain's finalized epoch** (fetched from the pinned checkpoint endpoint) rather than local time — real, verifiable, and outside anyone's control. Expiry isn't automatic (no cron on-chain): `expire_policy` is a keeper-callable action gated on that epoch. The legacy ordinal `expires_at_block` counter is retained for display only; the enforced window is the epoch pair.
 - **The panel judges depiction, the payout binds to fact.** A ruling is only as good as what the pinned Beacon API reports. File claims on genuinely-slashed validators — the honesty of the on-chain trail depends on real evidence, not a staged page.
 
 ---
@@ -137,7 +169,7 @@ Bulwark/
 
 ## Contract
 
-- **Address:** `0xFb58D6AF7449179aa7374cE3BFC57f03E9bEF368`
+- **Address:** `0x09aEa4cF4c9024925FbFe147B56aEe83A21c9b7C`
 
 > **Payout fix (July 2026).** Wallet payouts are sent as EVM external messages (an empty `@gl.evm.contract_interface` proxy executed by the contract's ghost account). The previous GenVM-call pattern errored at finalization on plain wallets and stranded the value; the contract was redeployed at the address above with the corrected transfer path.
 
@@ -146,7 +178,7 @@ Bulwark/
 
 Read state:
 ```bash
-genlayer call 0xFb58D6AF7449179aa7374cE3BFC57f03E9bEF368 get_protocol_params
+genlayer call 0x09aEa4cF4c9024925FbFe147B56aEe83A21c9b7C get_protocol_params
 ```
 
 ---

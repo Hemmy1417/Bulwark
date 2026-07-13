@@ -50,6 +50,40 @@ COVERED_CAUSES     = {CAUSE_BUG, CAUSE_UNAVOIDABLE}
 
 MAX_APPEALS        = 1               # one appeal per claim — must bring new evidence
 
+# ── Coverage-window enforcement (all Beacon-derived, no user input) ──────────
+# The Beacon validator object carries the slash timing itself: a slashed
+# validator's `withdrawable_epoch = slash_epoch + EPOCHS_PER_SLASHINGS_VECTOR`,
+# so the contract can reconstruct WHEN the slash happened and check it against
+# the purchased term. The finality checkpoint gives the current epoch to anchor
+# the coverage window at purchase and to release exposure on expiry.
+EPOCHS_PER_DAY = 225                  # 32 slots × 12s = 384s/epoch → ~225 epochs/day
+EPOCHS_PER_SLASHINGS_VECTOR = 8192    # withdrawable_epoch = slash_epoch + this
+FAR_FUTURE_EPOCH = (1 << 64) - 1      # a non-slashed validator's withdrawable_epoch
+
+
+def _extract_validator_facts(raw_text: str):
+    """Deterministically parse a Beacon `.../validators/{idx}` JSON response for
+    the authoritative slashing fact + slash-timing anchor. Returns
+    (slashed, withdrawable_epoch) or None if unparseable."""
+    try:
+        d = json.loads(raw_text)
+        v = d.get("data", {}).get("validator", {})
+        slashed = bool(v.get("slashed", False))
+        we = int(v.get("withdrawable_epoch", FAR_FUTURE_EPOCH))
+        return slashed, we
+    except Exception:
+        return None
+
+
+def _extract_finalized_epoch(raw_text: str) -> int:
+    """Deterministically parse a Beacon `finality_checkpoints` response for the
+    current finalized epoch. Returns -1 if unparseable."""
+    try:
+        d = json.loads(raw_text)
+        return int(d.get("data", {}).get("finalized", {}).get("epoch", -1))
+    except Exception:
+        return -1
+
 
 # Empty EVM interface: paying a wallet is an external message through the
 # chain layer (executed by the IC's ghost contract), NOT a GenVM call —
@@ -216,6 +250,55 @@ class Bulwark(gl.Contract):
         if chain.startswith("cosmos") and vid:
             return [f"https://www.mintscan.io/cosmos/validators/{vid}"]
         return []
+
+    def _epoch_source_urls(self) -> list:
+        """Beacon finality-checkpoint endpoints → the current finalized epoch,
+        used to anchor the coverage window at purchase and detect expiry."""
+        path = "eth/v1/beacon/states/finalized/finality_checkpoints"
+        return [
+            f"https://ethereum-beacon-api.publicnode.com/{path}",
+            f"https://docs-demo.quiknode.pro/{path}",
+        ]
+
+    def _fetch_chain_facts(self, pinned: list) -> dict:
+        """
+        Consensus fetch of the authoritative, contract-derived facts that gate
+        the coverage window: the current finalized epoch, and the validator's
+        slashed flag + withdrawable_epoch (from which slash timing is derived).
+        Deterministic JSON parsing under comparative consensus — the validator
+        object is stable, so validators agree; the epoch is bucketed to absorb
+        the ~1-epoch jitter of independent fetches.
+        """
+        epoch_urls = self._epoch_source_urls()
+
+        def probe() -> typing.Any:
+            cur = -1
+            for u in epoch_urls:
+                try:
+                    cur = _extract_finalized_epoch(gl.nondet.web.render(u, mode="text"))
+                    if cur >= 0:
+                        break
+                except Exception:
+                    continue
+            slashed, we, got = False, FAR_FUTURE_EPOCH, False
+            for u in pinned:
+                try:
+                    facts = _extract_validator_facts(gl.nondet.web.render(u, mode="text"))
+                    if facts is not None:
+                        slashed, we = facts
+                        got = True
+                        break
+                except Exception:
+                    continue
+            return json.dumps({"current_epoch": cur, "slashed": slashed,
+                               "withdrawable_epoch": we, "got": got})
+
+        principle = (
+            "Outputs are equivalent if the boolean 'slashed', integer "
+            "'withdrawable_epoch', and boolean 'got' match exactly, and the "
+            "'current_epoch' integers are within 8 of each other."
+        )
+        return json.loads(gl.eq_principle.prompt_comparative(probe, principle))
 
     def _append_index(self, index: TreeMap[str, str], key: str, value: str) -> None:
         raw = index.get(key)
@@ -392,6 +475,30 @@ class Bulwark(gl.Contract):
                 "policy added; reduce coverage or wait for the owner to top up the reserve"
             )
 
+        # BASELINE — prove the validator is UNSLASHED at coverage start, from the
+        # contract-pinned Beacon API, and anchor the coverage window to the real
+        # finalized epoch. Without this, a pre-existing slash could be insured
+        # after the fact. Fail closed: no authoritative baseline → no policy.
+        pinned = self._canonical_sources(validator_identifier.strip(), chain_label.strip())
+        if not pinned:
+            raise gl.vm.UserError(
+                "No canonical validator source for this chain/identifier; a coverage "
+                "baseline cannot be established, so a policy cannot be written"
+            )
+        facts = self._fetch_chain_facts(pinned)
+        if not facts.get("got") or int(facts.get("current_epoch", -1)) < 0:
+            raise gl.vm.UserError(
+                "Could not establish an authoritative baseline for this validator right now "
+                "(Beacon API unreachable); try again shortly"
+            )
+        if bool(facts.get("slashed")):
+            raise gl.vm.UserError(
+                "Validator is already slashed — a pre-existing condition cannot be insured"
+            )
+        start_epoch = int(facts["current_epoch"])
+        term_epochs = duration * EPOCHS_PER_DAY
+        end_epoch = start_epoch + term_epochs
+
         # Persist
         self.policy_counter = u256(int(self.policy_counter) + 1)
         policy_id = str(int(self.policy_counter))
@@ -405,7 +512,12 @@ class Bulwark(gl.Contract):
             "premium_wei":          str(premium),
             "duration_days":        duration,
             "created_at_block":     now,
-            "expires_at_block":     now + duration,   # 1 block ≈ 1 day for demo purposes
+            "expires_at_block":     now + duration,   # ordinal; window uses epochs below
+            # Beacon-anchored coverage window (authoritative, contract-derived):
+            "baseline_slashed":     False,            # proven at purchase
+            "coverage_start_epoch": start_epoch,
+            "coverage_end_epoch":   end_epoch,
+            "term_epochs":          term_epochs,
             "status":               "ACTIVE",
             "claim_id":             None,
         }
@@ -463,7 +575,30 @@ class Bulwark(gl.Contract):
         confidence = ruling["confidence"]
         summary = ruling["summary"]
 
-        covered = slashed and cause in COVERED_CAUSES
+        # ── COVERAGE-WINDOW ENFORCEMENT ──────────────────────────────────────
+        # A slash only pays if it happened INSIDE the purchased term. Derive the
+        # slash epoch from the Beacon-reported withdrawable_epoch and check it
+        # against the window anchored at purchase. This is what stops a
+        # pre-existing or post-expiry slash from being claimable.
+        we = int(ruling.get("withdrawable_epoch", FAR_FUTURE_EPOCH))
+        start_epoch = int(policy.get("coverage_start_epoch", 0))
+        end_epoch = int(policy.get("coverage_end_epoch", 0))
+        slash_epoch = None
+        in_window = False
+        window_note = "NOT_SLASHED"
+        if slashed and we < FAR_FUTURE_EPOCH:
+            slash_epoch = we - EPOCHS_PER_SLASHINGS_VECTOR
+            if slash_epoch < start_epoch:
+                window_note = "PRE_EXISTING"     # slashed before coverage began
+            elif slash_epoch > end_epoch:
+                window_note = "LATE"             # slashed after the term ended
+            else:
+                window_note = "IN_TERM"
+                in_window = True
+        elif slashed:
+            window_note = "TIMING_UNVERIFIABLE"  # slashed but no epoch anchor → don't pay
+
+        covered = slashed and cause in COVERED_CAUSES and in_window
         coverage = int(policy["coverage_wei"])
         payout = coverage if covered else 0
 
@@ -472,7 +607,8 @@ class Bulwark(gl.Contract):
         now = self._now()
         snapshot = {
             "round": "initial", "cause": cause, "slashed": slashed,
-            "confidence": confidence, "covered": covered, "summary": summary, "at_block": now,
+            "confidence": confidence, "covered": covered, "summary": summary,
+            "window_note": window_note, "slash_epoch": slash_epoch, "at_block": now,
         }
         claim = {
             "claim_id":       claim_id,
@@ -485,6 +621,12 @@ class Bulwark(gl.Contract):
             "ai_cause":       cause,
             "ai_confidence":  confidence,
             "ai_summary":     summary,
+            # coverage-window audit trail
+            "slash_epoch":          slash_epoch,
+            "coverage_start_epoch": start_epoch,
+            "coverage_end_epoch":   end_epoch,
+            "in_window":            in_window,
+            "window_note":          window_note,
             "covered":        covered,
             "payout_wei":     str(payout),
             "status":         "APPROVED" if covered else "REJECTED",
@@ -531,6 +673,11 @@ class Bulwark(gl.Contract):
         """
         def rule_on_claim() -> typing.Any:
             snippets = []
+            # Deterministically parsed slash-timing anchor from the pinned JSON —
+            # authoritative, not left to the LLM.
+            parsed_slashed = False
+            parsed_we = FAR_FUTURE_EPOCH
+            parsed_ok = False
             pinned_labels = [
                 (f"AUTHORITATIVE VALIDATOR STATUS #{i+1} (contract-pinned, trusted)", u)
                 for i, u in enumerate(pinned)
@@ -552,6 +699,11 @@ class Bulwark(gl.Contract):
                     )
                     continue
                 snippets.append(f"--- {label} ---\n{web_data[:2500]}\n")
+                if label.startswith("AUTHORITATIVE") and not parsed_ok:
+                    facts = _extract_validator_facts(web_data)
+                    if facts is not None:
+                        parsed_slashed, parsed_we = facts
+                        parsed_ok = True
 
             combined = "\n".join(snippets) if snippets else "No evidence loaded."
 
@@ -610,12 +762,32 @@ Respond ONLY with this JSON (no markdown fence, no prose):
     "summary": "<2-3 sentence plain-English rationale citing the evidence>"
 }}
 """
-            return gl.nondet.exec_prompt(task)
+            llm_raw = gl.nondet.exec_prompt(task)
+            # Fold the DETERMINISTICALLY PARSED slash facts into the ruling — the
+            # LLM only decides the CAUSE bucket; whether-slashed and the slash
+            # timing come from the pinned JSON, not the model.
+            text = llm_raw.strip()
+            if "```" in text:
+                parts = text.split("```")
+                text = parts[1] if len(parts) > 1 else text
+                if text.startswith("json"):
+                    text = text[4:]
+            try:
+                obj = json.loads(text.strip())
+            except Exception:
+                obj = {}
+            obj["slashed"] = parsed_slashed
+            obj["withdrawable_epoch"] = int(parsed_we)
+            obj["parsed_ok"] = parsed_ok
+            if not parsed_slashed:
+                obj["cause"] = CAUSE_NOT_SLASHED
+            return json.dumps(obj)
 
         principle = (
             "Outputs are equivalent if the 'cause' bucket label matches exactly "
-            "(NOT_SLASHED, NEGLIGENCE, BUG, UNAVOIDABLE) AND the boolean 'slashed' "
-            "matches. 'confidence' numeric value and 'summary' wording may differ."
+            "(NOT_SLASHED, NEGLIGENCE, BUG, UNAVOIDABLE), the boolean 'slashed' "
+            "matches, and the integer 'withdrawable_epoch' matches. 'confidence' "
+            "and 'summary' wording may differ."
         )
         raw = gl.eq_principle.prompt_comparative(rule_on_claim, principle)
 
@@ -630,6 +802,7 @@ Respond ONLY with this JSON (no markdown fence, no prose):
         return {
             "cause":      str(ruling.get("cause", "NOT_SLASHED")).upper(),
             "slashed":    bool(ruling.get("slashed", False)),
+            "withdrawable_epoch": int(ruling.get("withdrawable_epoch", FAR_FUTURE_EPOCH)),
             "confidence": int(ruling.get("confidence", 0)),
             "summary":    str(ruling.get("summary", ""))[:1000],
         }
@@ -671,7 +844,26 @@ Respond ONLY with this JSON (no markdown fence, no prose):
         ruling = self._run_adjudication(policy, pinned, combined)
         cause = ruling["cause"]
         slashed = ruling["slashed"]
-        covered = slashed and cause in COVERED_CAUSES
+        # An appeal re-rules the CAUSE, but the coverage window is immutable —
+        # it can never manufacture a payout for an out-of-term slash.
+        we = int(ruling.get("withdrawable_epoch", FAR_FUTURE_EPOCH))
+        start_epoch = int(policy.get("coverage_start_epoch", 0))
+        end_epoch = int(policy.get("coverage_end_epoch", 0))
+        in_window = False
+        window_note = "NOT_SLASHED"
+        slash_epoch = None
+        if slashed and we < FAR_FUTURE_EPOCH:
+            slash_epoch = we - EPOCHS_PER_SLASHINGS_VECTOR
+            if slash_epoch < start_epoch:
+                window_note = "PRE_EXISTING"
+            elif slash_epoch > end_epoch:
+                window_note = "LATE"
+            else:
+                window_note = "IN_TERM"
+                in_window = True
+        elif slashed:
+            window_note = "TIMING_UNVERIFIABLE"
+        covered = slashed and cause in COVERED_CAUSES and in_window
         coverage = int(policy["coverage_wei"])
         payout = coverage if covered else 0
         now = self._now()
@@ -685,9 +877,13 @@ Respond ONLY with this JSON (no markdown fence, no prose):
         claim["ai_summary"] = ruling["summary"]
         claim["covered"] = covered
         claim["payout_wei"] = str(payout)
+        claim["in_window"] = in_window
+        claim["window_note"] = window_note
+        claim["slash_epoch"] = slash_epoch
         claim.setdefault("history", []).append({
             "round": "appeal", "cause": cause, "slashed": slashed,
             "confidence": ruling["confidence"], "covered": covered,
+            "window_note": window_note, "slash_epoch": slash_epoch,
             "summary": ruling["summary"], "at_block": now,
         })
 
@@ -702,6 +898,43 @@ Respond ONLY with this JSON (no markdown fence, no prose):
             self._save_claim(claim)
 
         return claim
+
+    @gl.public.write
+    def expire_policy(self, policy_id: str) -> dict:
+        """
+        Release an ACTIVE policy once its coverage term has elapsed. The current
+        finalized epoch is fetched from the contract-pinned Beacon checkpoint and
+        must be at/after the policy's coverage_end_epoch — no wall-clock trust,
+        no owner discretion. Expiry frees the policy's coverage from the
+        outstanding-exposure book (so the reserve backs only live risk) and
+        blocks any later claim on it. Anyone may call it (keeper-friendly).
+        """
+        policy = self._load_policy(policy_id)
+        if policy["status"] != "ACTIVE":
+            raise gl.vm.UserError(f"Policy status is {policy['status']}, not ACTIVE")
+
+        pinned = self._canonical_sources(policy["validator_identifier"], policy["chain_label"])
+        if not pinned:
+            raise gl.vm.UserError("No canonical source to verify the current epoch for expiry")
+        facts = self._fetch_chain_facts(pinned)
+        cur = int(facts.get("current_epoch", -1))
+        if cur < 0:
+            raise gl.vm.UserError("Could not fetch the current epoch (Beacon API unreachable); try again")
+        end_epoch = int(policy.get("coverage_end_epoch", 0))
+        if cur < end_epoch:
+            raise gl.vm.UserError(
+                f"Policy has not expired yet (current epoch {cur} < coverage end {end_epoch})"
+            )
+
+        policy["status"] = "EXPIRED"
+        policy["expired_at_epoch"] = cur
+        self._save_policy(policy)
+        # Term elapsed with no covered claim — release its exposure from the book.
+        self.active_policy_count = u256(max(0, int(self.active_policy_count) - 1))
+        self.outstanding_exposure_wei = u256(
+            max(0, int(self.outstanding_exposure_wei) - int(policy["coverage_wei"]))
+        )
+        return policy
 
     @gl.public.write
     def settle_pending_payout(self, claim_id: str) -> dict:

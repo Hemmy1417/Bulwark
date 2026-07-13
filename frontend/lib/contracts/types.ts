@@ -18,6 +18,11 @@ export interface Policy {
   duration_days: number;
   created_at_block: number;
   expires_at_block: number;
+  // Beacon-anchored coverage window (v2 hardening)
+  baseline_slashed?: boolean;
+  coverage_start_epoch?: number;
+  coverage_end_epoch?: number;
+  term_epochs?: number;
   status: PolicyStatus;
   claim_id: string | null;
 }

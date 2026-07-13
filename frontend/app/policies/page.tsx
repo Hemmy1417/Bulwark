@@ -84,8 +84,24 @@ function PolicyCard({ policy }: { policy: Policy }) {
         <Stat label="Coverage"     value={`${formatGen(policy.coverage_wei)} GEN`} />
         <Stat label="Premium paid" value={`${formatGen(policy.premium_wei)} GEN`} />
         <Stat label="Duration"     value={`${policy.duration_days} days`} />
-        <Stat label="Expires (block)" value={String(policy.expires_at_block)} mono />
+        <Stat label="Baseline" value={policy.baseline_slashed === false ? "Unslashed ✓" : "—"} />
       </div>
+
+      {policy.coverage_start_epoch !== undefined && (
+        <>
+          <div className="hairline" />
+          <div className="text-xs" style={{ opacity: 0.85 }}>
+            <div style={{ letterSpacing: "0.08em", opacity: 0.6, marginBottom: 4 }}>COVERAGE WINDOW · BEACON-ANCHORED</div>
+            <div className="grid grid-cols-2 gap-3">
+              <Stat label="Start epoch" value={String(policy.coverage_start_epoch)} mono />
+              <Stat label="End epoch"   value={String(policy.coverage_end_epoch)} mono />
+            </div>
+            <p style={{ opacity: 0.55, marginTop: 6 }}>
+              A slash only pays if its epoch falls inside this window — pre-existing and post-expiry slashes are refused.
+            </p>
+          </div>
+        </>
+      )}
 
       {policy.status === "ACTIVE" && (
         <Link href={`/claims/new/${policy.policy_id}`} className="btn btn-ghost w-full">
