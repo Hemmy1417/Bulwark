@@ -8,6 +8,23 @@ import type {
   TransactionReceipt,
 } from "./types";
 
+// Resolve the CONNECTED wallet's EIP-1193 provider so writes are signed by the
+// wallet the user picked — not genlayer-js's implicit window.ethereum fallback,
+// which can be the wrong extension when several are installed. Prefer MetaMask
+// when multiple wallets inject into window.ethereum.providers.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function resolveInjectedProvider(): any {
+  if (typeof window === "undefined") return null;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const eth: any = (window as any).ethereum;
+  if (!eth) return null;
+  if (Array.isArray(eth.providers)) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return eth.providers.find((p: any) => p.isMetaMask && !p.isCoinbaseWallet) ?? eth.providers[0] ?? eth;
+  }
+  return eth;
+}
+
 /**
  * Typed wrapper around the Bulwark Intelligent Contract.
  * Read methods return safe defaults on read failure so a fresh deployment
@@ -22,7 +39,11 @@ class Bulwark {
   constructor(contractAddress: string, address?: string | null) {
     this.contractAddress = contractAddress as `0x${string}`;
     const config: any = { chain: studionet };
-    if (address) config.account = address as `0x${string}`;
+    if (address) {
+      config.account = address as `0x${string}`;
+      const provider = resolveInjectedProvider();
+      if (provider) config.provider = provider;
+    }
     this.client = createClient(config);
   }
 
