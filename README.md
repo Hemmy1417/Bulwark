@@ -242,3 +242,15 @@ npm run dev
 3. **On a slashing event, file notice of claim.** From the policy card, paste the primary evidence URL (`beaconscan.com/validator/<index>`) and up to three cause URLs (client release notes, operator post-mortem hosted as a public Gist, ethereum.org rewards-and-penalties doc).
 4. **Panel adjudicates.** Validators fetch each URL, an LLM rules the cause, `prompt_comparative` bucketed consensus writes the ruling to chain. Covered rulings settle the sum insured to the claimant on the same transaction.
 5. **Public ledger.** Every ruling — approved, rejected, or pending — appears in `/ledger` with the panel's reasoning paragraph and cited URLs. Fully replay-verifiable.
+
+---
+
+## Signed writes
+
+Contract writes are signed by the **connected wallet's own EIP-1193 provider**. The
+contract wrapper resolves the injected provider (preferring MetaMask when several
+wallets are installed) and binds it into the genlayer-js client, so every transaction
+is signed by the wallet the user actually picked — never an implicit `window.ethereum`
+fallback that could be the wrong extension. A repository-level test
+(`frontend/tests/signed-write.test.ts`) proves the write path routes
+`eth_sendTransaction` through that provider with the correct `from`.
